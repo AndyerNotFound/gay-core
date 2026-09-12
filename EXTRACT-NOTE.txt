@@ -1,0 +1,20 @@
+Gay Core + ai-gateway-core 源码提取包 (2026-09-12)
+====================================================
+
+内容:
+  gay-core/          = Gay Core 原生 App 源码 (v0.13.16 / versionCode 93)
+                       Kotlin + MDC(View体系), 零XML布局全代码构建
+  ai-gateway-core/   = AI 网关后端完整运行代码 (bin/ src/ plugins/16个内置插件 web/ docs/ test/)
+
+处理:
+  - 脱敏: 全文扫描无真实密钥/密码/内网IP(仅 127.0.0.1/0.0.0.0 示例与测试假凭据)
+  - 去注释: 全部 .js/.kt/.kts/.html/.xml 注释已移除(字符串/模板插值保留)
+
+验证(全部真跑):
+  - JS: 29/29 通过 node --check
+  - Kotlin: 全量类型检查 EXIT 0 (app/src/main/java + test, kotlinc + android.jar)
+  - 后端运行时: 自带测试套件 29/29 通过(真实起服/插件/SDUI/认证)
+
+运行:
+  后端: cd ai-gateway-core && node bin/agw-core.js start   (需 Node 18+, 零依赖)
+  App : 需 Android SDK + Gradle (Termux 配方见 build.gradle.kts; 沙箱缺 Gradle/SDK 未打 APK)

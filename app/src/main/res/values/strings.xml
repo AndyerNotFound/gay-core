@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Gay Core</string>
+
+    
+    <string name="welcome_title">Gay Core</string>
+    <string name="welcome_subtitle">ai-gateway-core 原生客户端</string>
+    <string name="i_am_user">我是用户</string>
+    <string name="i_am_user_desc">加入服务器, 使用中转站服务</string>
+    <string name="i_am_admin">我是管理员</string>
+    <string name="i_am_admin_desc">管理我的中转站服务器</string>
+
+    
+    <string name="my_servers">我的服务器</string>
+    <string name="add_server">添加服务器</string>
+    <string name="no_servers">还没有加入任何服务器</string>
+    <string name="no_servers_hint">点击下方按钮添加</string>
+    <string name="remove_server">移除服务器</string>
+    <string name="remove_server_confirm">确定移除「%1$s」吗? 本地数据(布局/凭据)将被清除。</string>
+    <string name="switch_server">切换服务器</string>
+
+    
+    <string name="server_url">服务器地址</string>
+    <string name="server_url_hint">https://example.com:16384</string>
+    <string name="next">下一步</string>
+    <string name="fetch_failed">无法连接服务器: %1$s</string>
+    <string name="not_gaycore_server">这不是 ai-gateway-core 服务器 (缺少 App 接口)</string>
+    <string name="security_verify">插件安全验证</string>
+    <string name="security_verify_desc">该服务器启用了以下插件。请核对来源、权限与校验值, 确认后再安装。</string>
+    <string name="plugin_builtin">内置</string>
+    <string name="plugin_permissions">权限: %1$s</string>
+    <string name="plugin_no_permissions">无特殊权限</string>
+    <string name="plugin_sha">SHA-256: %1$s</string>
+    <string name="install_trust">信任并安装</string>
+    <string name="cancel">取消</string>
+    <string name="admin_key">管理密钥 (adminKey)</string>
+    <string name="verify_admin">验证并继续</string>
+    <string name="admin_verify_failed">管理员验证失败: %1$s</string>
+
+    
+    <string name="login">登录</string>
+    <string name="login_cardkey">卡密登录</string>
+    <string name="login_account">账号登录</string>
+    <string name="cardkey_hint">sk-…</string>
+    <string name="uid_hint">用户名</string>
+    <string name="password_hint">密码</string>
+    <string name="login_failed">登录失败: %1$s</string>
+    <string name="no_auth">该服务器未启用认证插件</string>
+    <string name="register">注册</string>
+    <string name="register_tab">注册新账号</string>
+    <string name="register_username_hint">用户名 (3-32位字母数字)</string>
+    <string name="register_pw_hint">密码 (至少8位)</string>
+    <string name="register_pw2_hint">确认密码</string>
+    <string name="register_btn">注册并登录</string>
+    <string name="register_success">注册成功, 已自动登录</string>
+    <string name="register_failed">注册失败: %1$s</string>
+    <string name="pw_mismatch">两次密码不一致</string>
+
+    
+    <string name="tab_home">首页</string>
+    <string name="tab_personal">个人</string>
+    <string name="tab_settings">设置</string>
+    <string name="personal_missing">「个人」功能需要服务器启用「用户系统」插件</string>
+    <string name="home_plugins_empty">暂无插件组件</string>
+    <string name="announcement">公告</string>
+
+    
+    <string name="plugin_manage">插件管理</string>
+    <string name="layout_edit">界面布局</string>
+    <string name="theme_select">主题</string>
+    <string name="layout_reset">恢复默认布局</string>
+    <string name="layout_saved">布局已保存</string>
+    <string name="layout_full">底栏最多 5 个按键</string>
+    <string name="debug_zone">调试</string>
+    <string name="debug_active">调试模式已开启 (至 %1$s)</string>
+    <string name="debug_banner">⚠ 调试模式开启中</string>
+    <string name="about">关于</string>
+    <string name="version">版本 %1$s</string>
+
+    
+    <string name="home_widgets_empty">暂无 Widget 组件</string>
+    <string name="widget_edit_title">编辑首页 Widget</string>
+    <string name="widget_edit_desc">勾选要显示的 Widget, ↑↓ 排序</string>
+
+    
+    <string name="models_title">模型列表</string>
+    <string name="models_search_hint">搜索模型名</string>
+    <string name="models_empty">暂无可用模型</string>
+    <string name="server_contact">联系方式</string>
+    <string name="server_website">网站</string>
+
+    
+    <string name="load_failed">加载失败: %1$s</string>
+    <string name="retry">重试</string>
+    <string name="crash_title">上次运行崩溃了</string>
+    <string name="crash_hint">以下是崩溃详情，可截图反馈给开发者：</string>
+    <string name="crash_ok">知道了</string>
+    <string name="back">返回</string>
+    <string name="copied">已复制</string>
+    <string name="confirm">确定</string>
+
+    
+    <string name="admin_home">首页</string>
+    <string name="admin_settings">设置</string>
+    <string name="admin_server_info">服务点资料</string>
+    <string name="admin_server_info_desc">名称/简介/图标/公告, 展示给用户</string>
+    <string name="admin_user_debug">为用户启用调试模式</string>
+    <string name="admin_user_debug_desc">限定单个用户 UID, 限时自动关闭</string>
+    <string name="admin_layout">配置用户端默认布局</string>
+    <string name="admin_plugins">插件管理</string>
+    <string name="admin_audit">审计日志</string>
+    <string name="save">保存</string>
+    <string name="saved">已保存</string>
+    <string name="field_name">名称</string>
+    <string name="field_desc">简介</string>
+    <string name="field_icon">图标 URL</string>
+    <string name="field_announcement">公告</string>
+    <string name="field_contact">联系方式</string>
+    <string name="field_website">网站</string>
+    <string name="debug_uid">用户 UID</string>
+    <string name="debug_minutes">时长(分钟, 上限1440)</string>
+    <string name="debug_enable">启用调试</string>
+    <string name="debug_disable">关闭调试</string>
+    <string name="debug_current">当前: %1$s (剩余 %2$d 分钟)</string>
+    <string name="debug_none">当前未开启</string>
+    <string name="uptime">运行时间</string>
+    <string name="requests">请求数</string>
+    <string name="errors">错误数</string>
+    <string name="branches">分支</string>
+    <string name="core_version">内核 v%1$s</string>
+
+    
+    <string name="layout_editor_desc">勾选底栏按键(最多5个), 长按拖动排序</string>
+    <string name="theme_dark_follow">跟随系统</string>
+    <string name="logout">退出登录</string>
+    <string name="ok">好</string>
+    <string name="connecting">连接中…</string>
+    <string name="edit">编辑</string>
+    <string name="delete">删除</string>
+    <string name="um_title">用户与卡密</string>
+    <string name="um_entry_desc">搜索用户或卡密, 管理用户资料与名下全部卡密(含子卡)</string>
+    <string name="um_search_hint">搜索用户或卡密 (UID/昵称/邮箱/卡号)</string>
+    <string name="um_new_user">新建用户</string>
+    <string name="um_empty">还没有用户</string>
+    <string name="um_no_match">没有匹配的结果</string>
+    <string name="um_orphan_section">未绑定用户的卡密</string>
+    <string name="um_key_count">%1$d 张卡</string>
+    <string name="um_used_quota">用量 %1$s / %2$s</string>
+    <string name="um_user_detail">用户信息</string>
+    <string name="um_user_info">资料</string>
+    <string name="um_user_gone">用户不存在或已被删除</string>
+    <string name="um_created_at">注册时间</string>
+    <string name="um_banned">已封禁</string>
+    <string name="um_ban">封禁</string>
+    <string name="um_unban">解封</string>
+    <string name="um_ban_reason">封禁原因 (可选)</string>
+    <string name="um_delete_user">删除用户</string>
+    <string name="um_delete_user_confirm">将删除用户 %1$s 及其名下全部卡密, 不可恢复!</string>
+    <string name="um_edit_user">编辑资料</string>
+    <string name="um_reset_password">重置密码</string>
+    <string name="um_new_password_hint">新密码</string>
+    <string name="um_uid_hint">用户名 (3-32位字母数字)</string>
+    <string name="um_name_hint">用户名</string>
+    <string name="um_nickname_hint">昵称</string>
+    <string name="um_password_hint">初始密码</string>
+    <string name="um_email_hint">邮箱 (可选)</string>
+    <string name="um_note_hint">备注 (可选)</string>
+    <string name="um_keys_section">卡密 (%1$d)</string>
+    <string name="um_no_keys">该用户还没有卡密</string>
+    <string name="um_create_key">给TA发卡</string>
+    <string name="um_key_name_hint">卡名称</string>
+    <string name="um_key_default_name">卡密</string>
+    <string name="um_quota_hint">额度 tokens (留空=不限)</string>
+    <string name="um_quota_zero">零额度 (不可用, 需充值)</string>
+    <string name="um_expires_hint">有效期 ISO 日期 (留空=永久)</string>
+    <string name="um_edit_key">编辑卡密</string>
+    <string name="um_key_enable">启用</string>
+    <string name="um_add_quota_hint">追加充值 tokens (留空不充)</string>
+    <string name="um_reset_usage">重置已用量</string>
+    <string name="um_copy_key">复制完整卡密</string>
+    <string name="um_delete_key">删除卡密</string>
+
+    
+    <string name="ui_demo_entry">UI 设计预览</string>
+    <string name="ui_demo_entry_desc">查看手绘图纸的 Gay Core Demo 界面</string>
+</resources>
