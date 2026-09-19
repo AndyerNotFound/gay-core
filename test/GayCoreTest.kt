@@ -12,7 +12,7 @@ import com.gaycore.app.sdui.Template
 import com.gaycore.app.data.UserFilter
 import com.google.gson.JsonParser
 
-                                              
+
 var passed = 0; var failed = 0
 fun T(name: String, fn: () -> Unit) {
     try { fn(); passed++; println("  ✅ $name") } catch (e: Throwable) { failed++; println("  ❌ $name — ${e.message}") }

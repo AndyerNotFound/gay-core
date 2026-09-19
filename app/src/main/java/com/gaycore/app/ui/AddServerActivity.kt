@@ -1,12 +1,17 @@
 package com.gaycore.app.ui
 
+import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Spinner
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.gaycore.app.App
@@ -23,10 +28,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-                                                                       
+
 class AddServerActivity : BaseActivity() {
 
-    private val theme = ThemeEngine(null)
+    
+    private val theme: ThemeEngine by lazy {
+        val st = App.of(this).store
+        val last = st.list().maxByOrNull { e -> e.addedAt }
+        val list = last?.bootstrap()?.themes ?: emptyList()
+        val info = list.firstOrNull { it.id == st.lastThemeId() } ?: list.firstOrNull()
+        ThemeEngine(info, st.lastDarkMode(), st.lastDynamicColors(), st.lastCustomSeed())
+    }
+    override fun tintTheme(): ThemeEngine? = theme
+
     private lateinit var container: LinearLayout
     private var mode = "user"
 
@@ -39,6 +53,13 @@ class AddServerActivity : BaseActivity() {
         mode = intent.getStringExtra("mode") ?: "user"
         theme.applyToWindow(this)
         container = UiKit.column(this)
+        
+
+
+        container.setPadding(
+            UiKit.dp(this, 16f), UiKit.dp(this, 14f),
+            UiKit.dp(this, 16f), UiKit.dp(this, 48f),
+        )
         container.setBackgroundColor(theme.color(this, "background"))
         val scrollRoot = UiKit.scroll(this, container)
         setContentView(scrollRoot)
@@ -51,12 +72,12 @@ class AddServerActivity : BaseActivity() {
         try {
             container.build()
         } catch (e: Throwable) {
-                                      
+            
             container.add(UiKit.text(this, "构建出错: " + e.javaClass.simpleName + ": " + (e.message ?: ""), 13f, true, theme.color(this, "error")), 8)
         }
     }
 
-                                                   
+    
     private fun stepUrl() {
         show(getString(R.string.next) + " 1/3") {
             val (cv, inner) = UiKit.card(this@AddServerActivity, theme)
@@ -89,16 +110,16 @@ class AddServerActivity : BaseActivity() {
         }
     }
 
-                                                      
+    
     private fun stepVerify() {
         val b = bootstrap ?: return stepUrl()
         show(getString(R.string.next) + " 2/3") {
-                        
+            
             b.serverInfo?.let { si ->
                 val (cv, inner) = UiKit.card(this@AddServerActivity, theme)
                 inner.add(UiKit.text(this@AddServerActivity, si.name?.ifBlank { b.branch } ?: b.branch, 19f, true, theme.color(this@AddServerActivity, "onSurface")))
                 si.description?.takeIf { it.isNotBlank() }?.let { inner.add(UiKit.text(this@AddServerActivity, it, 13.5f, false, theme.color(this@AddServerActivity, "onSurfaceVariant")), 4) }
-                              
+                
                 inner.add(UiKit.text(this@AddServerActivity, "自定义名称", 13f, false, theme.color(this@AddServerActivity, "onSurfaceVariant")), 8)
                 etName = MdField(
                     this@AddServerActivity, theme, "名称",
@@ -107,7 +128,7 @@ class AddServerActivity : BaseActivity() {
                 inner.add(etName!!, 4)
                 add(cv, 8)
             }
-                      
+            
             val (cv2, inner2) = UiKit.card(this@AddServerActivity, theme, getString(R.string.security_verify))
             inner2.add(UiKit.text(this@AddServerActivity, getString(R.string.security_verify_desc), 12.5f, false, theme.color(this@AddServerActivity, "onSurfaceVariant")))
             for (p in b.plugins) {
@@ -137,39 +158,75 @@ class AddServerActivity : BaseActivity() {
         }
     }
 
-                                                     
+    
     private fun stepLogin() {
         val b = bootstrap ?: return stepUrl()
         show(getString(R.string.next) + " 3/3 · " + getString(R.string.login)) {
-                                        
+            
             add(UiKit.text(this@AddServerActivity,
                 "诊断: cardkey=${b.auth.cardkey} user=${b.auth.user} 分支=${b.branches.size} 插件=${b.plugins.size}",
                 11f, false, theme.color(this@AddServerActivity, "onSurfaceVariant")), 4)
 
-                      
+            
+
+
+
             if (b.branches.size > 1) {
                 val (cv, inner) = UiKit.card(this@AddServerActivity, theme, getString(R.string.branches))
-                val sp = Spinner(this@AddServerActivity)
-                val names = b.branches.map { it.name }
-                sp.adapter = ArrayAdapter(this@AddServerActivity, android.R.layout.simple_spinner_dropdown_item, names)
-                sp.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                    override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) { branch = names[pos] }
-                    override fun onNothingSelected(p: AdapterView<*>?) {}
+                var selIdx = b.branches.indexOfFirst { it.name == b.branch }.let { if (it >= 0) it else 0 }
+                val refs = ArrayList<Triple<LinearLayout, View, TextView>>()
+                fun paintSel() {
+                    refs.forEachIndexed { i, r ->
+                        val row = r.first; val dot = r.second; val tv = r.third
+                        val sel = i == selIdx
+                        row.background = if (sel)
+                            Md3.shape(this@AddServerActivity, theme.color(this@AddServerActivity, "secondaryContainer"), 14)
+                        else
+                            Md3.shape(this@AddServerActivity, theme.color(this@AddServerActivity, "surfaceContainerHighest"), 14)
+                        dot.background = if (sel)
+                            Md3.shape(this@AddServerActivity, theme.color(this@AddServerActivity, "primary"), 999)
+                        else
+                            Md3.shape(this@AddServerActivity, Color.TRANSPARENT, 999, 2f, theme.color(this@AddServerActivity, "outlineVariant"))
+                        tv.setTextColor(theme.color(this@AddServerActivity, if (sel) "onSecondaryContainer" else "onSurface"))
+                        tv.setTypeface(if (sel) Typeface.DEFAULT_BOLD else Typeface.DEFAULT)
+                    }
                 }
-                inner.add(sp)
+                b.branches.forEachIndexed { i, br ->
+                    val row = LinearLayout(this@AddServerActivity)
+                    row.orientation = LinearLayout.HORIZONTAL
+                    row.gravity = Gravity.CENTER_VERTICAL
+                    val padH = dp(this@AddServerActivity, 14)
+                    row.setPadding(padH, dp(this@AddServerActivity, 10), padH, dp(this@AddServerActivity, 10))
+                    val dot = View(this@AddServerActivity)
+                    dot.layoutParams = ViewGroup.LayoutParams(dp(this@AddServerActivity, 16), dp(this@AddServerActivity, 16))
+                    row.addView(dot)
+                    val tv = UiKit.text(this@AddServerActivity, br.name, 15f, false, theme.color(this@AddServerActivity, "onSurface"))
+                    row.add(tv, 10)
+                    row.isClickable = true
+                    row.isFocusable = true
+                    row.setOnClickListener {
+                        selIdx = i
+                        branch = br.name
+                        paintSel()
+                    }
+                    inner.add(row, 8)
+                    refs.add(Triple(row, dot, tv))
+                }
+                branch = b.branches[selIdx].name
+                paintSel()
                 add(cv, 8)
             }
 
             if (!b.auth.cardkey && !b.auth.user) {
                 add(UiKit.centerText(this@AddServerActivity, getString(R.string.no_auth), theme.color(this@AddServerActivity, "onSurfaceVariant")), 8)
-                                    
+                
                 val btn = UiKit.button(this@AddServerActivity, theme, getString(R.string.install_trust))
                 btn.setOnClickListener { finishSave(null) }
                 add(btn, 14)
                 return@show
             }
 
-                                                                    
+            
             fun plainCard(titleText: String): LinearLayout {
                 val c = LinearLayout(this@AddServerActivity)
                 c.orientation = LinearLayout.VERTICAL
@@ -191,6 +248,14 @@ class AddServerActivity : BaseActivity() {
             cv.add(btnKey, 10)
             add(cv, 8)
 
+            
+            add(
+                UiKit.button(this@AddServerActivity, theme, "跳过登录 · 先以游客身份浏览", "text").apply {
+                    setOnClickListener { finishSave(null) }
+                },
+                14,
+            )
+
             if (b.auth.user) {
                 val cv2 = plainCard(getString(R.string.login_account))
                 val etUid = MdField(this@AddServerActivity, theme, getString(R.string.uid_hint))
@@ -198,6 +263,10 @@ class AddServerActivity : BaseActivity() {
                     inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
                 }
                 cv2.add(etUid)
+                cv2.add(
+                    UiKit.text(this@AddServerActivity, getString(R.string.login_id_hint), 11f, false, theme.color(this@AddServerActivity, "onSurfaceVariant")),
+                    4,
+                )
                 cv2.add(etPw, 8)
                 val err = UiKit.text(this@AddServerActivity, "", 13f, false, theme.color(this@AddServerActivity, "error"))
                 cv2.add(err, 6)
@@ -220,7 +289,40 @@ class AddServerActivity : BaseActivity() {
                     }
                 }
                 cv2.add(btnLogin, 10)
-                                        
+                
+                val btnRotate = UiKit.button(this@AddServerActivity, theme, "主卡泄漏？凭密码轮换", "text")
+                btnRotate.setOnClickListener {
+                    val rid = etUid.text.toString().trim()
+                    val rpw = etPw.text.toString()
+                    if (rid.isEmpty() || rpw.isEmpty()) { err.text = "请先填写用户名和密码再轮换"; return@setOnClickListener }
+                    UiKit.confirm(this@AddServerActivity, "轮换主卡",
+                        "确认轮换主卡？\n· 旧主卡(含泄漏的)立即失效\n· 新主卡保留原额度与权限\n· 此操作不可撤销", theme) {
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            try {
+                                val r = Api.post("$baseUrl/auth/rotate-main", com.google.gson.JsonObject().apply {
+                                    addProperty("username", rid); addProperty("password", rpw)
+                                })
+                                if (r.get("ok")?.takeIf { it.isJsonPrimitive }?.asBoolean != true) {
+                                    val m = r.get("error")?.takeIf { it.isJsonPrimitive }?.asString ?: "轮换失败"
+                                    withContext(Dispatchers.Main) { err.text = m }
+                                    return@launch
+                                }
+                                val newKey = r.get("key").asString
+                                val rUid = r.get("uid")?.takeIf { !it.isJsonNull }?.asString ?: ""
+                                withContext(Dispatchers.Main) {
+                                    val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    cm.setPrimaryClip(android.content.ClipData.newPlainText("gaycore-key", newKey))
+                                    UiKit.toast(this@AddServerActivity, "主卡已轮换，新卡已复制，正在用新卡登录")
+                                    finishSave(newKey, rUid)
+                                }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) { err.text = "轮换失败: ${e.message}" }
+                            }
+                        }
+                    }
+                }
+                cv2.add(btnRotate, 4)
+                
                 if (b.auth.registration?.enable == true) {
                     val btnReg = UiKit.button(this@AddServerActivity, theme, getString(R.string.register_tab), "text")
                     btnReg.setOnClickListener { stepRegister() }
@@ -231,7 +333,7 @@ class AddServerActivity : BaseActivity() {
         }
     }
 
-                                                      
+    
     private fun stepRegister() {
         val b = bootstrap ?: return stepUrl()
         show(getString(R.string.register_tab)) {
@@ -240,7 +342,7 @@ class AddServerActivity : BaseActivity() {
                 "诊断: cardkey=${b.auth.cardkey} user=${b.auth.user} 注册=${b.auth.registration?.enable}",
                 11f, false, diagColor), 4)
 
-                      
+            
             fun plainCard(titleText: String): LinearLayout {
                 val c = LinearLayout(this@AddServerActivity)
                 c.orientation = LinearLayout.VERTICAL
@@ -294,7 +396,7 @@ class AddServerActivity : BaseActivity() {
                 }
             }
             cv.add(btnReg, 10)
-                      
+            
             val btnBack = UiKit.button(this@AddServerActivity, theme, getString(R.string.back), "text")
             btnBack.setOnClickListener { stepLogin() }
             cv.add(btnBack, 4)
@@ -302,7 +404,7 @@ class AddServerActivity : BaseActivity() {
         }
     }
 
-                                                      
+    
     private fun stepAdminKey() {
         show(getString(R.string.next) + " 3/3 · " + getString(R.string.i_am_admin)) {
             val (cv, inner) = UiKit.card(this@AddServerActivity, theme)
@@ -320,8 +422,8 @@ class AddServerActivity : BaseActivity() {
                 val key = et.text.toString().trim()
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
-                                                     
-                        val tmp = ServerEntry(ServerStore.siteId(baseUrl), baseUrl, "admin", adminKeyEnc = KeyStoreCrypto.encrypt(key))
+                        
+                        val tmp = ServerEntry(ServerStore.entryId(baseUrl, "admin", null), baseUrl, "admin", adminKeyEnc = KeyStoreCrypto.encrypt(key))
                         Api.adminGet(tmp, "/admin/api/status")
                         withContext(Dispatchers.Main) { finishSave(null, adminKey = key) }
                     } catch (e: Exception) {
@@ -339,12 +441,12 @@ class AddServerActivity : BaseActivity() {
     private fun finishSave(token: String?, uid: String = "", adminKey: String? = null) {
         val b = bootstrap ?: return
         val store = App.of(this).store
-        val siteId = ServerStore.siteId(baseUrl)
+        val siteId = ServerStore.entryId(baseUrl, mode, token)
         val customName = etName?.text?.toString()?.takeIf { it.isNotBlank() }
         val serverName = customName ?: b.serverInfo?.name?.takeIf { it.isNotBlank() } ?: b.branch
         val existing = store.get(siteId)
         val e = if (existing != null) {
-                                           
+            
             if (token != null) existing.tokenEnc = KeyStoreCrypto.encrypt(token)
             if (adminKey != null) existing.adminKeyEnc = KeyStoreCrypto.encrypt(adminKey)
             if (uid.isNotEmpty()) existing.uid = uid

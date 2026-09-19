@@ -9,14 +9,22 @@ import java.util.UUID
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-                                                    
-                                                  
+
+
 class IntentClient(private val store: ServerStore, private val server: ServerEntry) {
+
+    
+    private fun seqFromBody(raw: String): Long? = try {
+        val o = com.google.gson.JsonParser.parseString(raw).asJsonObject
+        o.get("currentSeq")?.takeIf { !it.isJsonNull }?.asLong
+    } catch (_: Exception) { null }
 
     class IntentResult(val json: JsonObject, val ok: Boolean) {
         val toast: String? get() = json.get("toast")?.takeIf { !it.isJsonNull }?.asString
         val error: String? get() = json.get("error")?.takeIf { !it.isJsonNull }?.asString
-        val ui: JsonObject? get() = json.getAsJsonObject("ui")
+        val ui: JsonObject? get() = json.get("ui")?.takeIf { it.isJsonObject }?.asJsonObject
+        
+        val back: Boolean get() = json.get("back")?.takeIf { !it.isJsonNull }?.asBoolean ?: false
     }
 
     private fun randomHex(bytes: Int): String {
@@ -24,10 +32,10 @@ class IntentClient(private val store: ServerStore, private val server: ServerEnt
         return b.joinToString("") { "%02x".format(it) }
     }
 
-       
-                                                                   
-                                                     
-       
+    
+
+
+
     fun intent(pluginId: String, endpoint: String, body: JsonObject?): IntentResult {
         val token = server.token() ?: throw Api.ApiException(401, "未登录")
         val path = if (endpoint.startsWith("./")) {
@@ -42,7 +50,7 @@ class IntentClient(private val store: ServerStore, private val server: ServerEnt
 
     private fun doSigned(token: String, pluginId: String, path: String, body: JsonObject?, retryOnSeq: Boolean): IntentResult {
         val bodyStr = body?.toString() ?: ""
-        val seq = store.nextSeq(server.id, pluginId)
+        val seq = store.nextSeqByToken(token, pluginId)
         val ts = System.currentTimeMillis()
         val nonce = randomHex(16)
         val intentId = UUID.randomUUID().toString()
@@ -56,17 +64,30 @@ class IntentClient(private val store: ServerStore, private val server: ServerEnt
             "X-GC-Intent-Id" to intentId,
             "X-GC-Sign" to sign,
         )
-        val json = Api.post(url, com.google.gson.JsonParser.parseString(bodyStr.ifEmpty { "{}" }).asJsonObject, headers)
+        val json = try {
+            Api.post(url, com.google.gson.JsonParser.parseString(bodyStr.ifEmpty { "{}" }).asJsonObject, headers)
+        } catch (e: Api.ApiException) {
+            
+
+            if (retryOnSeq) {
+                val cur = seqFromBody(e.rawBody)
+                if (cur != null) {
+                    store.correctSeqByToken(token, pluginId, cur)
+                    return doSigned(token, pluginId, path, body, retryOnSeq = false)
+                }
+            }
+            throw e
+        }
         val ok = json.get("ok")?.asBoolean ?: false
-                                            
+        
         if (!ok && retryOnSeq && json.has("currentSeq")) {
-            store.correctSeq(server.id, pluginId, json.get("currentSeq").asLong)
+            store.correctSeqByToken(token, pluginId, json.get("currentSeq").asLong)
             return doSigned(token, pluginId, path, body, retryOnSeq = false)
         }
         return IntentResult(json, ok)
     }
 }
 
-                         
+
 fun ServerEntry.fullBasePath(): String =
     if (branch == "default" || branch.isEmpty()) "" else "/$branch"

@@ -42,7 +42,8 @@
     <string name="login_cardkey">卡密登录</string>
     <string name="login_account">账号登录</string>
     <string name="cardkey_hint">sk-…</string>
-    <string name="uid_hint">用户名</string>
+    <string name="uid_hint">用户名 / UID</string>
+    <string name="login_id_hint">填注册时设置的用户名，或系统分配的 UID（两个都可以，个人中心能查到）</string>
     <string name="password_hint">密码</string>
     <string name="login_failed">登录失败: %1$s</string>
     <string name="no_auth">该服务器未启用认证插件</string>

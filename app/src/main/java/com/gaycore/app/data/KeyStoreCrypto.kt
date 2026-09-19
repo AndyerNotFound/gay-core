@@ -9,8 +9,8 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-                                                                    
-                             
+
+
 object KeyStoreCrypto {
     private const val ALIAS = "gaycore_cred_key"
     private const val KS = "AndroidKeyStore"
@@ -29,7 +29,7 @@ object KeyStoreCrypto {
         return kg.generateKey()
     }
 
-                                        
+    
     fun encrypt(plain: String): String {
         val c = Cipher.getInstance("AES/GCM/NoPadding")
         c.init(Cipher.ENCRYPT_MODE, key())

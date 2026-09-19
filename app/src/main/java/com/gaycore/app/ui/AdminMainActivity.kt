@@ -9,9 +9,17 @@ import android.widget.LinearLayout
 import androidx.lifecycle.lifecycleScope
 import com.gaycore.app.App
 import com.gaycore.app.R
+import android.content.Intent
+import android.net.Uri
+import android.webkit.ValueCallback
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import com.gaycore.app.data.Api
+import com.gaycore.app.data.Vault
+import com.gaycore.app.data.KeyStoreCrypto
 import com.gaycore.app.data.adminTarget
 import com.gaycore.app.data.ServerEntry
+import com.gaycore.app.data.HomeSlot
 import com.gaycore.app.theme.ThemeEngine
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -20,22 +28,110 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-   
-                                                                     
-  
-                                                                            
-                                                   
-   
+
+
+
+
+
+
 class AdminMainActivity : ShellActivity() {
 
     private lateinit var server: ServerEntry
     private var pluginMenu: List<ShellItem> = emptyList()
+    private var pluginAdminPages: Map<String, String> = emptyMap()
+
+    
+
+
+
+
+
+
+    
+    private var adminUiPages: List<com.gaycore.app.data.AdminUiPage> = emptyList()
+    
+    private val sduiBlockedUntil = HashMap<String, Long>()
+    
+    private val pageControllers = HashMap<String, SduiController>()
+
+    
+    private fun adminSduiOn(): Boolean =
+        try { App.of(this).store.sitePrefs(server.id).getBoolean("admin_sdui", true) } catch (_: Exception) { true }
+
+    private fun setAdminSduiOn(on: Boolean) {
+        App.of(this).store.sitePrefs(server.id).edit().putBoolean("admin_sdui", on).apply()
+        sduiBlockedUntil.clear()
+    }
+
+    
+    private fun sduiUsable(id: String): Boolean =
+        adminSduiOn() && adminUiOf(id) != null && (sduiBlockedUntil[id] ?: 0L) < System.currentTimeMillis()
+
+    private fun adminUiOf(id: String): String? =
+        adminUiPages.firstOrNull { it.id == id }?.ui?.takeIf { it.isNotEmpty() }
+
+    
+    private fun loadAdminUi() {
+        io {
+            
+
+            adminVaultLocked = Vault.ensureUnlocked(server)?.let { msg ->
+                withContext(Dispatchers.Main) { tip(msg) }
+                true
+            } ?: false
+            val cfg = try {
+                Api.bootstrap(server.baseUrl, server.adminTarget).adminUi
+            } catch (_: Exception) { null }
+            val list = cfg?.pages ?: emptyList()
+            withContext(Dispatchers.Main) {
+                val changed = list.map { it.id to it.ui } != adminUiPages.map { it.id to it.ui }
+                adminUiPages = list
+                if (changed) rebuildShell(false)
+            }
+        }
+    }
+
+    
+    private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
+    private val fileChooserLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val cb = fileChooserCallback
+        fileChooserCallback = null
+        if (cb == null) return@registerForActivityResult
+        var results: Array<Uri>? = null
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            val clip = result.data!!.clipData
+            if (clip != null && clip.itemCount > 0) {
+                results = Array(clip.itemCount) { clip.getItemAt(it).uri }
+            } else {
+                result.data!!.data?.let { results = arrayOf(it) }
+            }
+        }
+        cb.onReceiveValue(results)
+    }
+    fun launchFileChooser(cb: ValueCallback<Array<Uri>>, intent: Intent) {
+        fileChooserCallback = cb
+        try { fileChooserLauncher.launch(intent) }
+        catch (e: android.content.ActivityNotFoundException) {
+            fileChooserCallback = null
+            cb.onReceiveValue(null)
+            tip("设备上没有文件选择器")
+        }
+    }
     private var serverAnnouncement: String? = null
 
-                                  
+    
     private val prefs by lazy { getSharedPreferences("gaycore_admin_ui", Context.MODE_PRIVATE) }
     private fun darkModePref(): String = prefs.getString("dark_mode", "system") ?: "system"
     private fun dynamicPref(): Boolean = prefs.getBoolean("dynamic_colors", false)
+    private fun seedPref(): Int? = prefs.getInt("custom_seed", 0).takeIf { it != 0 }
+
+    
+    private fun setAdminSeed(seed: Int?) {
+        prefs.edit().apply {
+            if (seed == null) remove("custom_seed") else putInt("custom_seed", seed)
+            if (seed != null) putBoolean("dynamic_colors", false)
+        }.apply()
+    }
 
     private val pages: AdminPages by lazy {
         AdminPages(this, { theme }, server, { openConvo() }) { spec ->
@@ -58,7 +154,7 @@ class AdminMainActivity : ShellActivity() {
         const val A_PROFILE = "profile"
     }
 
-                                                        
+    
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val store = App.of(this).store
@@ -77,18 +173,34 @@ class AdminMainActivity : ShellActivity() {
         }
         loadPluginMenu()
         loadServerInfo()
+        loadAdminUi()
     }
 
-                       
+    
     private fun loadServerInfo() {
         io {
             val r = Api.adminGet(server, "/admin/api/server-info")
-            val ann = r.objOrNull("serverInfo")?.str("announcement")
+            
+            try {
+                val themes = Api.bootstrap(server.baseUrl, server.adminTarget).themes
+                withContext(Dispatchers.Main) { adminThemes = themes }
+            } catch (_: Exception) {  }
+            val siObj = r.objOrNull("serverInfo")
+            val ann = siObj?.str("announcement")
+            
+            var curChanged = false
+            siObj?.let { o ->
+                curChanged = com.gaycore.app.data.Currency.update(
+                    o.str("currencySymbol").ifEmpty { null },
+                    o.get("currencyRate")?.takeIf { !it.isJsonNull }?.asDouble,
+                )
+            }
             withContext(Dispatchers.Main) {
                 if (ann != serverAnnouncement) {
                     serverAnnouncement = ann
                     if (currentPageId == A_HOME) refreshCurrentPage()
                 }
+                if (curChanged) refreshCurrentPage()
             }
         }
     }
@@ -152,7 +264,7 @@ class AdminMainActivity : ShellActivity() {
         }
     }
 
-                                          
+    
     private var lastPluginMenuAt = 0L
 
     private fun loadPluginMenu() {
@@ -161,38 +273,130 @@ class AdminMainActivity : ShellActivity() {
                 val u = currentUid()
                 val arr = Api.adminGet(server, "/admin/api/plugins/$u").arrOrNull("plugins") ?: JsonArray()
                 val items = ArrayList<ShellItem>()
+                val adminPagesMap = HashMap<String, String>()
                 for (e in arr) {
                     val p = e.takeIf { it.isJsonObject }?.asJsonObject ?: continue
                     val pid = p.str("id")
                     if (pid.isEmpty()) continue
+                    
+
+                    if (pid == "auth-cardkey") continue
                     if (!p.bool("hasAdminPage")) continue
                     if (!p.bool("enable")) continue
+                    val ap = p.str("adminPage").ifEmpty { "pages/admin.html" }
+                    adminPagesMap[pid] = ap
                     items.add(ShellItem("pp:" + pid, p.str("name").ifEmpty { pid }, "插件管理页", DemoKit.iconRes(p.str("icon"))))
                 }
                 withContext(Dispatchers.Main) {
                     lastPluginMenuAt = System.currentTimeMillis()
                     val changed = items.size != pluginMenu.size || items.zip(pluginMenu).any { it.first.id != it.second.id }
+                    pluginAdminPages = adminPagesMap
                     pluginMenu = items
                     if (changed) rebuildShell(false) else rebuildDrawerMenuOnly()
                 }
             } catch (_: Exception) {
-                                    
+                
             }
         }
     }
 
     private fun rebuildDrawerMenuOnly() {
-                                      
-        rebuildShell(false)
+        
+
+        refreshDrawerMenu()
     }
 
     override fun onShellRebuilt() {
-                                                                 
+        
     }
 
-                                                        
+    
 
-    override fun createTheme(): ThemeEngine = ThemeEngine(null, darkModePref(), dynamicPref())
+    override fun createTheme(): ThemeEngine {
+        val dm = darkModePref(); val dyn = dynamicPref(); val sd = seedPref()
+        App.of(this).store.saveLastUi(null, dm, sd, dyn)
+        
+        return ThemeEngine(adminThemeInfo(), dm, dyn, sd)
+    }
+
+    
+    private var adminThemes: List<com.gaycore.app.data.ThemeInfo> = emptyList()
+
+    private fun adminThemeId(): String = prefs.getString("admin_theme_id", "") ?: ""
+
+    
+
+
+
+
+
+    
+    private fun themePluginId(themeId: String): String {
+        val p = server.bootstrap()?.plugins?.firstOrNull { it.type == "theme" && it.id.endsWith(themeId) }
+        return p?.id ?: ("theme-" + themeId)
+    }
+
+    
+
+
+
+    private fun themeParamsDialog(themeId: String, name: String) {
+        val pid = themePluginId(themeId)
+        io {
+            val r = try { Api.adminGet(server, "/admin/api/plugin-config/${currentUid()}/$pid") } catch (_: Exception) { null }
+            withContext(Dispatchers.Main) {
+                if (r == null) { tip("拿不到「$name」的参数（插件未安装或未启用）"); return@withContext }
+                val schema = r.arrOrNull("schema") ?: JsonArray()
+                if (schema.size() == 0) { tip("「$name」没有可调参数"); return@withContext }
+                val cfg = r.objOrNull("config") ?: JsonObject()
+                val col = dialogColumn()
+                val edits = LinkedHashMap<String, MdField>()
+                val checks = LinkedHashMap<String, com.google.android.material.materialswitch.MaterialSwitch>()
+                for (e in schema) {
+                    val f = e.takeIf { it.isJsonObject }?.asJsonObject ?: continue
+                    val key = f.str("key")
+                    if (key.isEmpty()) continue
+                    val label = f.str("label").ifEmpty { key }
+                    val cur = cfg.get(key)?.takeIf { !it.isJsonNull }?.asString
+                        ?: f.get("default")?.takeIf { !it.isJsonNull }?.asString ?: ""
+                    if (f.str("type") == "boolean") {
+                        DemoKit.put(col, DemoKit.txt(this@AdminMainActivity, theme, label, 13f, true), 10)
+                        val sw = DemoKit.themeSwitch(this@AdminMainActivity, theme, cur == "true")
+                        checks[key] = sw
+                        DemoKit.put(col, sw, 6)
+                    } else {
+                        val mf = MdField(this@AdminMainActivity, theme, label, cur, f.str("type") == "number", false)
+                        edits[key] = mf
+                        DemoKit.put(col, mf, 10)
+                    }
+                }
+                DemoKit.put(col, DemoKit.txt(this@AdminMainActivity, theme, "这些参数保存在服务端，保存后用户端与管理端一起生效。", 11.5f, false, "onSurfaceVariant"), 12)
+                UiKit.customDialog(this@AdminMainActivity, theme, name + " · 参数", col, "保存") {
+                    val body = JsonObject()
+                    for ((k, mf) in edits) body.addProperty(k, mf.text)
+                    for ((k, sw) in checks) body.addProperty(k, sw.isChecked)
+                    io {
+                        try { Api.adminPost(server, "/admin/api/plugin-config/${currentUid()}/$pid", body) } catch (_: Exception) { }
+                        withContext(Dispatchers.Main) {
+                            this@AdminMainActivity.tip("已保存，两端生效")
+                            this@AdminMainActivity.rebuildShell(true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    
+
+
+
+    private fun adminThemeInfo(): com.gaycore.app.data.ThemeInfo? {
+        val want = adminThemeId()
+            .ifEmpty { try { server.bootstrap()?.layout?.theme ?: "" } catch (_: Exception) { "" } }
+        if (want.isEmpty()) return null
+        return adminThemes.firstOrNull { it.id == want }
+    }
 
     override fun shellItems(): List<ShellItem> {
         val core = listOf(
@@ -209,10 +413,17 @@ class AdminMainActivity : ShellActivity() {
             ShellItem(A_SETTINGS, "设置", "服务点与危险操作", R.drawable.ic_settings),
             ShellItem(A_PROFILE, "个人中心", "我的资料与凭据", R.drawable.ic_person),
         )
-        return core + pluginMenu
+        
+        val extra = if (adminSduiOn()) adminUiPages
+            .filter { p -> p.ui.isNotEmpty() && core.none { it.id == p.id } }
+            .map { ShellItem(it.id, it.title.ifEmpty { it.id }, it.subtitle.ifEmpty { "服务端页面" }, DemoKit.iconRes(it.icon)) }
+        else emptyList()
+        return core + extra + pluginMenu
     }
 
     override fun buildPage(id: String): View = when {
+        
+        sduiUsable(id) -> sduiPage(id, adminUiOf(id)!!)
         id == A_HOME -> homePage()
         id == A_INSTANCES -> instancesPage()
         id == A_USERS -> pages.buildUsers()
@@ -230,7 +441,7 @@ class AdminMainActivity : ShellActivity() {
     }
 
     override fun topActionFor(id: String): TopAction = when (id) {
-                                                
+        
         A_MODELS -> TopAction(R.drawable.ic_grid, "快速分组") {
             openChild("快速分组", 0, "", null, { bar -> pages.quickGroupFooter(bar) }) { host ->
                 pages.buildQuickGroup(host)
@@ -241,7 +452,8 @@ class AdminMainActivity : ShellActivity() {
 
     override fun onRefresh(id: String) {
         refreshCurrentPage()
-                                          
+        tip("已刷新")
+        
         loadPluginMenu()
     }
 
@@ -249,19 +461,63 @@ class AdminMainActivity : ShellActivity() {
         if (System.currentTimeMillis() - lastPluginMenuAt < 30_000) return
         loadPluginMenu()
         loadServerInfo()
+        loadMeInfo()
+        loadAdminUi()
+    }
+
+    
+
+
+    private var meInfo: com.google.gson.JsonObject? = null
+
+    private fun jstr(o: com.google.gson.JsonObject?, k: String): String =
+        o?.get(k)?.takeIf { !it.isJsonNull }?.asString ?: ""
+
+    private fun loadMeInfo() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val me = try {
+                Api.get(server.baseUrl + "/auth/me", Api.adminUserHeaders(server))
+            } catch (_: Exception) { null }
+            if (me == null) return@launch
+            withContext(Dispatchers.Main) {
+                val prev = meInfo
+                val changed = prev == null ||
+                    jstr(prev, "nickname") != jstr(me, "nickname") ||
+                    jstr(prev, "name") != jstr(me, "name") ||
+                    jstr(prev, "avatar") != jstr(me, "avatar")
+                meInfo = me
+                
+                if (changed) rebuildShell(true)
+            }
+        }
     }
 
     override fun identity(): Identity {
-        val name = server.name.ifEmpty { server.baseUrl }
-        val ai = server.adminTarget
-        return Identity(name.take(1).uppercase(), name, server.baseUrl, "管理实例 · " + ai)
+        val me = meInfo
+        val nick = jstr(me, "nickname").ifEmpty { jstr(me, "name") }.ifEmpty { "管理员" }
+        val uname = jstr(me, "username")
+        val avatar = jstr(me, "avatar")
+        val site = server.name.ifEmpty { server.baseUrl }
+        val sub = if (uname.isNotEmpty() && uname != nick) "管理员 · " + uname else "管理员 · " + site
+        return Identity(nick.take(1).uppercase(), nick, sub, "实例 " + server.adminTarget, avatar)
     }
 
     override fun fabFor(id: String): FabSpec? = when (id) {
+        
+        A_HOME -> FabSpec(R.drawable.ic_edit, "编辑首页布局") { toggleAdminHomeEdit() }
         A_INSTANCES -> FabSpec(R.drawable.ic_add, "新建实例") { createInstance() }
         A_CHANNELS -> FabSpec(R.drawable.ic_add, "新增渠道") { pages.editChannel(null) { refreshCurrentPage() } }
         else -> null
     }
+
+    
+
+
+    override fun inlineBackAvailable(): Boolean =
+        pageControllers[currentPageId]?.canGoBack() == true
+
+    override fun onInlineBack(): Boolean =
+        pageControllers[currentPageId]?.back() ?: false
 
     override fun recents(): MutableList<String> = pages.playConvos
 
@@ -277,11 +533,11 @@ class AdminMainActivity : ShellActivity() {
     override fun onToggleDarkMode() {
         val next = if (darkModePref() == "dark") "light" else "dark"
         prefs.edit().putString("dark_mode", next).apply()
-                                      
+        
         rebuildShell(true)
     }
 
-                                                           
+    
     private fun profilePage(): View {
         val col = DemoKit.pageColumn(this, theme)
         DemoKit.put(col, DemoKit.sectionTitle(this, theme, "个人中心", "资料 / 凭据 / 额度"), 2)
@@ -303,30 +559,228 @@ class AdminMainActivity : ShellActivity() {
         return pageScroll(col)
     }
 
+    
+
+
+
+
+    private fun sduiPage(id: String, uiPath: String): View {
+        val col = DemoKit.pageColumn(this, theme)
+        val host = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        DemoKit.put(col, host, 2)
+        val ctl = SduiController(
+            this, this, server, "", theme,
+            admin = true,
+            adminApiScope = listOf("/admin/"),
+            
+
+            inlineNav = true,
+            onNavChanged = { refreshTopBar() },
+            onFallback = { reason -> fallbackToNative(id, reason) },
+            onClientAction = { name, value -> onSduiClientAction(name, value) },
+        )
+        pageControllers[id] = ctl
+        ctl.loadInto(host, uiPath, showTitle = false)
+        return pageScroll(col)
+    }
+
+    
+    private fun fallbackToNative(id: String, reason: String) {
+        if (isFinishing || isDestroyed) return
+        sduiBlockedUntil[id] = System.currentTimeMillis() + 300_000
+        tip("服务端界面不可用，已切回 App 内置页面（" + reason + "）")
+        rebuildShell(false)
+    }
+
+    
+
+
+
+    private fun onSduiClientAction(name: String, value: String) {
+        when (name) {
+            
+            "switchInstance" -> {
+                if (value.isEmpty()) { tip("缺少实例名"); return }
+                val st = try { Api.adminGet(server, "/admin/api/status") } catch (_: Exception) { null }
+                val o = st?.arrOrNull("instances")
+                    ?.firstOrNull { it.isJsonObject && it.asJsonObject.str("name") == value }
+                    ?.asJsonObject
+                switchInstance(value, o?.bool("enabled") ?: true, o?.bool("running") ?: true)
+            }
+            
+            "openNative" -> { if (value.isNotEmpty()) showPage(value) else tip("缺少页面 id") }
+            "refreshShell" -> rebuildShell(true)
+            else -> tip("不支持的动作: " + name)
+        }
+    }
+
     private fun pluginPage(pid: String): View {
         val col = DemoKit.pageColumn(this, theme)
         val card = DemoKit.panel(this, theme, 16)
-        if (!pages.canBuildNative(pid)) pages.buildPluginWeb(pid, "admin.html", card)
-        else pages.buildNativePlugin(pid, card)
+
+        
+
+
+        val sduiPath = adminUiOf(pid)
+        if (sduiPath != null && adminSduiOn()) {
+            val ctl = SduiController(
+                this, this, server, "", theme,
+                admin = true,
+                adminApiScope = listOf("/admin/"),
+                inlineNav = true,
+                onNavChanged = { refreshTopBar() },
+                onFallback = { reason ->
+                    
+                    card.removeAllViews()
+                    if (pages.canBuildNative(pid)) pages.buildNativePlugin(pid, card)
+                    else pages.buildPluginWeb(pid, pluginAdminPages[pid] ?: "pages/admin.html", card)
+                },
+                onClientAction = { name, value -> onSduiClientAction(name, value) },
+            )
+            pageControllers["pp:$pid"] = ctl
+            ctl.loadInto(card, sduiPath, showTitle = false)
+        } else {
+            val adminPage = pluginAdminPages[pid] ?: "pages/admin.html"
+            if (!pages.canBuildNative(pid)) pages.buildPluginWeb(pid, adminPage, card)
+            else pages.buildNativePlugin(pid, card)
+        }
         DemoKit.put(col, card, 2)
         return pageScroll(col)
     }
 
-                                                      
+    
+
+
+
+
+
+
+
+
+
+
+    private var homeBoard: HomeBoard? = null
+
+    
+    private val homeDecoPick = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        homeBoard?.onDecoImagePicked(uri)
+    }
+
+    
+    private fun homeTap(a: () -> Unit): () -> Unit = {
+        if (homeBoard?.editMode != true) a()
+    }
+
+    
+    private fun adminHomeDefaultHidden(): Set<String> = emptySet()
+
+    
+    private fun adminHomeCards(
+        list: List<JsonObject>, running: Int, reqs: Long, errs: Long, audit: JsonObject?,
+    ): LinkedHashMap<String, HomeCardDef> {
+        val defs = LinkedHashMap<String, HomeCardDef>()
+
+        defs["native:server"] =
+            HomeCardDef("native:server", "服务点卡片", "原生", 5, 1, { true }) { serverCard() }
+
+        
+        fun metric(id: String, label: String, value: String, glyph: String, act: () -> Unit) {
+            defs[id] = HomeCardDef(id, label, "原生", 2, 1, { true }) { _ ->
+                val v = DemoKit.metricTile(this, theme, value, label, glyph, homeTap(act))
+                v.minimumHeight = dp(104)
+                v
+            }
+        }
+        metric("native:m-instances", "实例总数", list.size.toString(), "▤") { showPage(A_INSTANCES) }
+        metric("native:m-running", "运行中", running.toString(), "●") { showPage(A_INSTANCES) }
+        metric("native:m-requests", "总请求", reqs.toString(), "↻") { showPage(A_USAGE) }
+        metric("native:m-errors", "错误", errs.toString(), "⚠") { showPage(A_USAGE) }
+        metric("native:m-current", "当前实例", server.adminTarget, "⎇") { showPage(A_INSTANCES) }
+
+        
+        fun quick(id: String, label: String, icon: Int, act: () -> Unit) {
+            defs[id] = HomeCardDef(id, "快捷·" + label, "原生", 2, 1, { true }) { _ ->
+                val v = DemoKit.actionTile(this, theme, label, icon, null, homeTap(act))
+                v.minimumHeight = dp(84)
+                v
+            }
+        }
+        quick("native:q-channels", "渠道", R.drawable.ic_apps) { showPage(A_CHANNELS) }
+        quick("native:q-users", "用户管理", R.drawable.ic_group) { showPage(A_USERS) }
+        quick("native:q-models", "模型分组", R.drawable.ic_grid) { showPage(A_MODELS) }
+        quick("native:q-playground", "PlayGround", R.drawable.ic_chat) { showPage(A_PLAYGROUND) }
+        quick("native:q-usage", "使用统计", R.drawable.ic_wallet) { showPage(A_USAGE) }
+        quick("native:q-plugins", "插件", R.drawable.ic_star) { showPage(A_PLUGINS) }
+
+        
+        defs["native:instances"] =
+            HomeCardDef("native:instances", "实例摘要", "原生", 5, 2, { true }) { _ ->
+                val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                DemoKit.put(box, DemoKit.txt(this, theme, "实例摘要", 16f, true))
+                DemoKit.put(
+                    box,
+                    DemoKit.txt(
+                        this, theme,
+                        if (list.isEmpty()) "尚未获取到实例信息" else "共 " + list.size + " 个 · 错误 " + errs,
+                        12f, false, "onSurfaceVariant",
+                    ),
+                    6,
+                )
+                list.take(3).forEach { o -> DemoKit.put(box, instanceSummaryCard(o), 8) }
+                if (list.size > 3) {
+                    DemoKit.put(
+                        box,
+                        DemoKit.chip(this, theme, "查看全部 " + list.size + " 个", R.drawable.ic_chevron_right) { showPage(A_INSTANCES) },
+                        8,
+                    )
+                }
+                box
+            }
+
+        
+        defs["native:notice"] =
+            HomeCardDef("native:notice", "公告", "原生", 5, 2, { !serverAnnouncement.isNullOrBlank() }) { _ ->
+                val nc = DemoKit.panel(this, theme, 16, ripple = true)
+                nc.setOnClickListener { if (homeBoard?.editMode != true) showPage(A_NOTICE) }
+                DemoKit.put(nc, DemoKit.txt(this, theme, "服务点公告", 10.5f, true, "onSurfaceVariant"))
+                DemoKit.put(nc, DemoKit.txt(this, theme, serverAnnouncement.orEmpty(), 13f, false, "onSurface"), 7)
+                nc
+            }
+
+        
+        defs["native:audit"] =
+            HomeCardDef("native:audit", "审计日志", "原生", 5, 3, { audit != null }) { _ ->
+                val entries = audit?.arrOrNull("entries") ?: JsonArray()
+                val card = DemoKit.panel(this, theme, 16)
+                DemoKit.put(card, DemoKit.txt(this, theme, "审计日志", 16f, true))
+                DemoKit.put(card, DemoKit.txt(this, theme, "最近 " + entries.size() + " 条", 12f, false, "onSurfaceVariant"), 6)
+                if (entries.size() == 0) {
+                    DemoKit.put(card, DemoKit.txt(this, theme, "暂无审计记录。", 12.5f, false, "onSurfaceVariant"), 10)
+                } else {
+                    for (i in 0 until entries.size()) {
+                        val l = entries.get(i).takeIf { it.isJsonObject }?.asJsonObject ?: continue
+                        val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+                        row.addView(DemoKit.txt(this, theme, auditText(l), 12f, false, "onSurface"), LinearLayout.LayoutParams(0, -2, 1f))
+                        row.addView(DemoKit.txt(this, theme, shortTime(l.str("ts")), 10.5f, false, "onSurfaceVariant"))
+                        DemoKit.put(card, row, if (i == 0) 0 else 10)
+                    }
+                }
+                card
+            }
+
+        return defs
+    }
 
     private fun homePage(): View {
         val col = DemoKit.pageColumn(this, theme)
-        DemoKit.put(col, serverCard(), 2)
-
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        DemoKit.put(col, box, 18)
+        val box = DemoKit.box(this)
+        DemoKit.put(col, box, 2)
         fill(box, {
             val st = Api.adminGet(server, "/admin/api/status")
             val audit = try { Api.adminGet(server, "/admin/api/audit/${currentUid()}?limit=6") } catch (_: Exception) { null }
-            st to audit
+            Pair(st, audit)
         }) { pair ->
             val st = pair.first
-            val audit = pair.second
             val arr = st.arrOrNull("instances") ?: JsonArray()
             var running = 0
             var reqs = 0L
@@ -339,83 +793,55 @@ class AdminMainActivity : ShellActivity() {
                 reqs += o.long("requests")
                 errs += o.long("errors")
             }
-            DemoKit.put(
-                box,
-                DemoKit.metricRow(
-                    this,
-                    DemoKit.metricTile(this, theme, list.size.toString(), "实例总数", "▤") { showPage(A_INSTANCES) },
-                    DemoKit.metricTile(this, theme, running.toString(), "运行中", "●") { showPage(A_INSTANCES) },
-                    DemoKit.metricTile(this, theme, reqs.toString(), "总请求", "↻") { showPage(A_USAGE) },
-                ),
-                0,
+            val defs = adminHomeCards(list, running, reqs, errs, pair.second)
+            val store = App.of(this).store
+            val saved = store.homeLayoutV3(server.id)
+            val decos = HashMap<String, com.gaycore.app.data.DecoCard>()
+            saved?.decos?.let { decos.putAll(it) }
+            val board = HomeBoard(
+                this, theme, defs,
+                HomeBoard.mergeItems(defs.values.toList(), saved?.items, decos),
+                (saved?.hidden ?: adminHomeDefaultHidden().toList()).toMutableSet(),
+                decos,
+                { adminHomeDefaultHidden() },
+                { homeDecoPick.launch("image/*") },
+                { o, h, d -> store.saveHomeLayoutV3(server.id, o, h.toList(), d) },
+                { msg -> tip(msg) },
             )
-            val m2 = LinearLayout(this)
-            m2.addView(DemoKit.metricTile(this, theme, errs.toString(), "错误", "⚠") { showPage(A_USAGE) }, LinearLayout.LayoutParams(0, dp(104), 1f))
-            m2.addView(DemoKit.metricTile(this, theme, server.adminTarget, "当前实例", "⎇") { showPage(A_INSTANCES) }, LinearLayout.LayoutParams(0, dp(104), 1f).apply { marginStart = dp(8) })
-            m2.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
-            DemoKit.put(box, m2, 8)
-
-                                 
-            DemoKit.put(box, DemoKit.sectionTitle(this, theme, "快速入口", "常用操作"), 20)
-            val quick = LinearLayout(this).apply { gravity = Gravity.CENTER }
-            quick.addView(DemoKit.actionTile(this, theme, "渠道", R.drawable.ic_apps) { showPage(A_CHANNELS) }, LinearLayout.LayoutParams(0, dp(88), 1f))
-            quick.addView(DemoKit.actionTile(this, theme, "用户管理", R.drawable.ic_group) { showPage(A_USERS) }, LinearLayout.LayoutParams(0, dp(88), 1f).apply { marginStart = dp(8) })
-            quick.addView(DemoKit.actionTile(this, theme, "PlayGround", R.drawable.ic_chat) { showPage(A_PLAYGROUND) }, LinearLayout.LayoutParams(0, dp(88), 1f).apply { marginStart = dp(8) })
-            DemoKit.put(box, quick, 10)
-
-                      
-            DemoKit.put(box, DemoKit.sectionTitle(this, theme, "实例摘要", "共 " + list.size + " 个"), 20)
-            if (list.isEmpty()) {
-                val card = DemoKit.panel(this, theme, 16)
-                DemoKit.put(card, DemoKit.txt(this, theme, "尚未获取到实例信息。", 12.5f, false, "onSurfaceVariant"))
-                DemoKit.put(box, card, 8)
-            } else {
-                list.take(3).forEach { o -> DemoKit.put(box, instanceSummaryCard(o), 8) }
-                if (list.size > 3) {
-                    DemoKit.put(box, DemoKit.chip(this, theme, "查看全部 " + list.size + " 个", R.drawable.ic_chevron_right) { showPage(A_INSTANCES) }, 10)
-                }
-            }
-
-                               
-            val ann = serverAnnouncement
-            if (!ann.isNullOrBlank()) {
-                DemoKit.put(box, DemoKit.sectionTitle(this, theme, "公告", "用户端首页会展示这条"), 20)
-                val nc = DemoKit.panel(this, theme, 16, ripple = true).apply {
-                    isClickable = true
-                    isFocusable = true
-                    setOnClickListener { showPage(A_NOTICE) }
-                }
-                DemoKit.put(nc, DemoKit.txt(this, theme, "服务点公告", 10.5f, true, "onSurfaceVariant"))
-                DemoKit.put(nc, DemoKit.txt(this, theme, ann, 13f, false, "onSurface"), 7)
-                DemoKit.put(box, nc, 10)
-            }
-
-                      
-            if (audit != null) {
-                val entries = audit.arrOrNull("entries") ?: JsonArray()
-                DemoKit.put(box, DemoKit.sectionTitle(this, theme, "审计日志", "最近 " + entries.size() + " 条"), 20)
-                val card = DemoKit.panel(this, theme, 16)
-                if (entries.size() == 0) {
-                    DemoKit.put(card, DemoKit.txt(this, theme, "暂无审计记录。", 12.5f, false, "onSurfaceVariant"))
-                } else {
-                    for (i in 0 until entries.size()) {
-                        val l = entries.get(i).takeIf { it.isJsonObject }?.asJsonObject ?: continue
-                        val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-                        row.addView(
-                            DemoKit.txt(this, theme, auditText(l), 12f, false, "onSurface"),
-                            LinearLayout.LayoutParams(0, -2, 1f),
-                        )
-                        row.addView(DemoKit.txt(this, theme, shortTime(l.str("ts")), 10.5f, false, "onSurfaceVariant"))
-                        DemoKit.put(card, row, if (i == 0) 0 else 10)
-                    }
-                }
-                DemoKit.put(box, card, 8)
-            }
+            board.onListEditor = { openAdminHomeList() }
+            homeBoard = board
+            DemoKit.put(box, board.host, 0)
+            board.render()
         }
         return pageScroll(col)
     }
 
-                                                 
+    
+    private fun toggleAdminHomeEdit() {
+        val b = homeBoard
+        if (b == null) {
+            openAdminHomeList()
+            return
+        }
+        b.toggleEdit()
+        if (b.editMode) tip("拖动卡片自由摆放 · 点「半宽/整宽」改宽度 · ✕ 隐藏")
+    }
+
+    
+    private fun openAdminHomeList() {
+        val b = homeBoard
+        if (b == null) {
+            tip("先回首页加载一次数据")
+            return
+        }
+        openChild("首页布局（列表方式）") { host ->
+            DemoKit.put(host, b.listEditorView {
+                closeChild()
+                tip("已保存，首页布局已更新")
+            }, 2)
+        }
+    }
+    
     private fun auditText(l: JsonObject): String {
         val action = l.str("action")
         val detail = StringBuilder()
@@ -429,7 +855,7 @@ class AdminMainActivity : ShellActivity() {
         return if (detail.isEmpty()) action else action + "  " + detail
     }
 
-                              
+    
     private fun timeOf(millis: Long): String {
         if (millis <= 0L) return "—"
         val cal = java.util.Calendar.getInstance()
@@ -443,7 +869,7 @@ class AdminMainActivity : ShellActivity() {
 
     private fun shortTime(ts: String): String {
         if (ts.length < 16) return ts
-                                                    
+        
         return try {
             ts.substring(5, 10).replace('-', '/') + " " + ts.substring(11, 16)
         } catch (_: Exception) {
@@ -504,7 +930,7 @@ class AdminMainActivity : ShellActivity() {
         return card
     }
 
-                                                        
+    
 
     private fun instancesPage(): View {
         val col = DemoKit.pageColumn(this, theme)
@@ -553,13 +979,13 @@ class AdminMainActivity : ShellActivity() {
         return pageScroll(col)
     }
 
-       
-                                                       
-                                                                 
-       
+    
+
+
+
     private fun switchInstance(name: String, enabled: Boolean, running: Boolean) {
-                                                               
-                                                                                    
+        
+
         if (name == server.adminTarget) { tip("已经是当前实例"); return }
         val warn = when {
             !enabled -> "\n\n⚠️ 该实例当前是「已停用」状态，切过去后管理接口会返回错误。"
@@ -609,7 +1035,7 @@ class AdminMainActivity : ShellActivity() {
         val isCurrent = name == server.adminTarget
         val card = DemoKit.panel(this, theme, 16)
         if (!isCurrent) {
-                             
+            
             card.isClickable = true
             card.isFocusable = true
             card.setOnClickListener { switchInstance(name, enabled, running) }
@@ -745,8 +1171,8 @@ class AdminMainActivity : ShellActivity() {
             io {
                 Api.adminPost(server, "/admin/api/instance/$uid/rename", JsonObject().apply { addProperty("name", nn) })
                 withContext(Dispatchers.Main) {
-                                                                     
-                                                                         
+                    
+
                     if (server.adminTarget == old) {
                         server.adminInstance = nn
                         com.gaycore.app.App.of(this@AdminMainActivity).store.save(server)
@@ -798,7 +1224,7 @@ class AdminMainActivity : ShellActivity() {
         }
     }
 
-                                                          
+    
 
     private class UsageData(
         val instances: List<Pair<String, Long>>,
@@ -821,7 +1247,7 @@ class AdminMainActivity : ShellActivity() {
                 val nm = o.str("name")
                 perInst.add(nm to o.long("requests"))
                 errs += o.long("errors")
-                                                   
+                
                 try {
                     val pfx = if (nm == "default" || nm.isEmpty()) "" else "/" + nm
                     val s2 = Api.get(server.baseUrl + pfx + "/status")
@@ -889,7 +1315,7 @@ class AdminMainActivity : ShellActivity() {
         return pageScroll(col)
     }
 
-                                                      
+    
 
     private fun noticePage(): View {
         val col = DemoKit.pageColumn(this, theme)
@@ -901,7 +1327,7 @@ class AdminMainActivity : ShellActivity() {
         return pageScroll(col)
     }
 
-                                  
+    
     private fun saveNotices(si: JsonObject, list: List<Notices.Item>, onOk: () -> Unit) {
         val text = Notices.encode(list)
         if (text.length > 2000) {
@@ -978,7 +1404,7 @@ class AdminMainActivity : ShellActivity() {
         DemoKit.put(box, info, 16)
     }
 
-                       
+    
     private fun addNotice(si: JsonObject, list: List<Notices.Item>, timed: Boolean) {
         val col = dialogColumn()
         val f = MdField(this, theme, if (timed) "时间线内容（一行一条）" else "公告内容（一行一条）", "", false, false)
@@ -1018,7 +1444,7 @@ class AdminMainActivity : ShellActivity() {
         }
     }
 
-                           
+    
     private fun askDeleteNotice(si: JsonObject, list: List<Notices.Item>, index: Int) {
         val it0 = list[index]
         val preview = (if (it0.target.isNotEmpty()) "（定向 @" + it0.target + "）" else "") + it0.body.take(40)
@@ -1043,7 +1469,7 @@ class AdminMainActivity : ShellActivity() {
         )
     }
 
-                                                      
+    
 
     private fun themePage(): View {
         val col = DemoKit.pageColumn(this, theme)
@@ -1059,7 +1485,46 @@ class AdminMainActivity : ShellActivity() {
         }, 12)
         DemoKit.put(col, mode, 12)
 
-                                                     
+        
+        val tcard = DemoKit.panel(this, theme, 16)
+        DemoKit.put(tcard, DemoKit.txt(this, theme, "配色方案（主题插件包）", 16f, true))
+        DemoKit.put(
+            tcard,
+            DemoKit.txt(this, theme, "来自服务端已安装的主题插件；点一下立即生效，**只影响管理端**（用户端在它自己的主题页里选）。", 12f, false, "onSurfaceVariant"),
+            6,
+        )
+        val tbox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        DemoKit.put(tcard, tbox, 10)
+        DemoKit.put(col, tcard, 12)
+        fill(tbox, {
+            try { Api.bootstrap(server.baseUrl, server.adminTarget).themes } catch (_: Exception) { emptyList() }
+        }) { themes ->
+            adminThemes = themes
+            if (themes.isEmpty()) {
+                DemoKit.put(tbox, DemoKit.txt(this, theme, "服务端没有可用的主题插件（继续使用内置 MD3 配色）。", 12.5f, false, "onSurfaceVariant"))
+            } else {
+                val curId = adminThemeId()
+                for (t in themes) {
+                    val isCur = t.id == curId || (curId.isEmpty() && t.builtin)
+                    val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+                    row.addView(
+                        DemoKit.chip(this, theme, t.name + (if (isCur) " ✓ 使用中" else ""), R.drawable.ic_palette) {
+                            prefs.edit().putString("admin_theme_id", t.id).apply()
+                            rebuildShell(true)
+                            tip("已应用配色：" + t.name)
+                        },
+                        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                    )
+                    row.addView(
+                        DemoKit.chip(this, theme, "参数", R.drawable.ic_tune) { themeParamsDialog(t.id, t.name) },
+                        LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) },
+                    )
+                    DemoKit.put(tbox, row, 8)
+                }
+            }
+        }
+
+        
         if (android.os.Build.VERSION.SDK_INT >= 31) {
             val dy = DemoKit.panel(this, theme, 16)
             DemoKit.put(
@@ -1069,12 +1534,38 @@ class AdminMainActivity : ShellActivity() {
                     "从壁纸提取种子色，生成整套配色（含表面/容器/描边），需要 Android 12+",
                     dynamicPref(),
                 ) { on ->
-                    prefs.edit().putBoolean("dynamic_colors", on).apply()
+                    prefs.edit().apply {
+                        putBoolean("dynamic_colors", on)
+                        
+                        if (on) remove("custom_seed")
+                    }.apply()
                     rebuildShell(true)
                 },
             )
             DemoKit.put(col, dy, 12)
         }
+
+        
+        val aSeed = seedPref()
+        DemoKit.put(
+            col,
+            DemoKit.sectionTitle(
+                this, theme, "自定义主色",
+                if (dynamicPref()) "当前由 Material You 生效 —— 选任意颜色会关闭它"
+                else if (aSeed != null) "正在使用自定义主色（点「跟随主题」可恢复）"
+                else "选一个颜色自动生成整套配色（管理端本机）",
+            ),
+            20,
+        )
+        val seedCard = DemoKit.panel(this, theme, 16)
+        DemoKit.put(
+            seedCard,
+            DemoKit.seedPalette(this, theme, aSeed) { seed ->
+                setAdminSeed(seed)
+                rebuildShell(true)
+            },
+        )
+        DemoKit.put(col, seedCard, 12)
 
         DemoKit.put(col, DemoKit.txt(this, theme, "组件预览", 16f, true), 12)
         val preview = DemoKit.panel(this, theme, 16)
@@ -1100,7 +1591,51 @@ class AdminMainActivity : ShellActivity() {
         return pageScroll(col)
     }
 
-                                                      
+    
+
+    
+    private var adminVaultLocked: Boolean? = null
+
+    
+    private fun vaultDesc(): String {
+        val has = server.vaultPass()?.isNotEmpty() == true
+        return when {
+            has && adminVaultLocked == true -> "已保存 · 网关当前锁定（点这里重填，会自动解锁）"
+            has -> "已保存（网关重启后自动解锁）"
+            adminVaultLocked == true -> "⚠️ 未设置 · 网关已锁定：转发会被 503 拒绝，点这里填写"
+            else -> "未设置 · 网关锁定后转发会被拒绝"
+        }
+    }
+
+    
+    private fun askVaultPassAdmin() {
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val et = MdField(this, theme, "网关口令（至少 8 位）", "")
+        et.edit.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        DemoKit.put(col, et)
+        DemoKit.put(
+            col,
+            DemoKit.txt(this, theme, "口令只用来解锁网关（服务端不落盘；这里存 Android Keystore 加密区）。留空保存 = 清除。", 11.5f, false, "onSurfaceVariant"),
+            8,
+        )
+        UiKit.customDialog(this, theme, "网关口令", col, "保存") {
+            val v = et.text.trim()
+            App.of(this).store.get(server.id)?.let { e ->
+                e.vaultPassEnc = if (v.isEmpty()) null else KeyStoreCrypto.encrypt(v)
+                App.of(this).store.save(e)
+                server = e
+            }
+            tip(if (v.isEmpty()) "已清除网关口令" else "已保存，正在尝试解锁…")
+            lifecycleScope.launch {
+                val err = if (v.isEmpty()) Vault.ensureUnlocked(server) else Vault.unlockWith(server, v)
+                adminVaultLocked = err != null
+                withContext(Dispatchers.Main) { tip(err ?: "网关已解锁 ✓") }
+                refreshCurrentPage()
+            }
+        }
+    }
+
+    
 
     private fun settingsPage(): View {
         val col = DemoKit.pageColumn(this, theme)
@@ -1123,10 +1658,44 @@ class AdminMainActivity : ShellActivity() {
             DemoKit.put(card, DemoKit.valueRow(this, theme, "地址", server.baseUrl), 12)
             DemoKit.put(card, DemoKit.valueRow(this, theme, "管理实例", server.adminTarget), 10)
             DemoKit.put(card, DemoKit.valueRow(this, theme, "名称", si?.str("name").orEmpty().ifEmpty { server.name }), 10)
+            
+            DemoKit.put(card, DemoKit.settingsRow(this, theme, R.drawable.ic_key, "网关口令", vaultDesc()) { askVaultPassAdmin() }, 10)
             DemoKit.put(card, DemoKit.button(this, theme, "编辑服务点资料", "tonal") { editServerInfo(si, false) }, 14)
             DemoKit.put(box, card, 0)
 
-                        
+            
+            val uicard = DemoKit.panel(this, theme, 16)
+            DemoKit.put(uicard, DemoKit.txt(this, theme, "管理端界面", 16f, true))
+            DemoKit.put(
+                uicard,
+                DemoKit.txt(
+                    this, theme,
+                    if (adminUiPages.none { it.ui.isNotEmpty() }) {
+                        "当前服务端没有下发管理端页面，全部使用 App 内置界面。"
+                    } else {
+                        "已下发 " + adminUiPages.count { it.ui.isNotEmpty() } + " 个服务端页面：" +
+                            adminUiPages.filter { it.ui.isNotEmpty() }.joinToString("、") { it.title.ifEmpty { it.id } }
+                    },
+                    12.5f, false, "onSurfaceVariant",
+                ),
+                8,
+            )
+            DemoKit.put(
+                uicard,
+                DemoKit.switchRow(
+                    this, theme, "使用服务端界面",
+                    "关掉即全部改用 App 内置界面（服务端页面出问题时的保险开关）",
+                    adminSduiOn(),
+                ) { on ->
+                    setAdminSduiOn(on)
+                    tip(if (on) "已切到服务端界面" else "已切回内置界面")
+                    refreshCurrentPage()
+                },
+                14,
+            )
+            DemoKit.put(box, uicard, 14)
+
+            
             val ud = cc?.objOrNull("userDebug")
             val dcard = DemoKit.panel(this, theme, 16)
             DemoKit.put(dcard, DemoKit.txt(this, theme, "用户调试模式", 16f, true))
@@ -1160,7 +1729,7 @@ class AdminMainActivity : ShellActivity() {
             DemoKit.put(dcard, dacts, 14)
             DemoKit.put(box, dcard, 14)
 
-                          
+            
             val mcard = DemoKit.panel(this, theme, 16)
             DemoKit.put(
                 mcard,
@@ -1172,6 +1741,53 @@ class AdminMainActivity : ShellActivity() {
                 },
             )
             DemoKit.put(box, mcard, 14)
+        }
+
+        
+        val agBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        DemoKit.put(col, agBox, 10)
+        fill(agBox, {
+            val cfg = try { Api.adminGet(server, "/admin/api/config/${currentUid()}") } catch (_: Exception) { null }
+            cfg?.objOrNull("config")?.objOrNull("accessGuard")
+        }) { ag ->
+            val mode = ag?.str("mode").orEmpty().ifEmpty { "off" }
+            val allowUA = (ag?.arrOrNull("allowUA") ?: JsonArray()).joinToString(",") { it.asString }
+            val exempt = (ag?.arrOrNull("exemptPaths") ?: JsonArray()).joinToString(",") { it.asString }
+            val card = DemoKit.panel(this, theme, 16)
+            DemoKit.put(card, DemoKit.txt(this, theme, "访问控制", 16f, true))
+            DemoKit.put(card, DemoKit.txt(this, theme, "限制哪些客户端能访问此服务点。弱边界 (UA 可伪造), 真要隔离就别开公网隧道。管理端点始终有 adminKey 鉴权。", 12.5f, false, "onSurfaceVariant"), 8)
+            val labels = listOf("关闭 off", "仅 App", "仅网页")
+            val modes = listOf("off", "app", "web")
+            var curMode = mode
+            DemoKit.put(card, DemoKit.segmented(this, theme, labels, modes.indexOf(curMode).coerceAtLeast(0)) { idx ->
+                curMode = modes[idx]
+            }, 12)
+            val uaField = MdField(this, theme, "允许的客户端标识 (逗号分隔, 匹配 UA 子串)", allowUA)
+            DemoKit.put(card, uaField, 10)
+            val exField = MdField(this, theme, "豁免路径前缀 (逗号分隔, 永远放行)", exempt)
+            DemoKit.put(card, exField, 10)
+            DemoKit.put(card, DemoKit.button(this, theme, "保存访问控制", "filled") {
+                val uas = uaField.text.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                val exs = exField.text.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                val uaArr = JsonArray(); for (u in uas) uaArr.add(u)
+                val exArr = JsonArray(); for (e in exs) exArr.add(e)
+                val body = JsonObject().apply {
+                    add("accessGuard", JsonObject().apply {
+                        addProperty("mode", curMode)
+                        add("allowUA", uaArr)
+                        add("exemptPaths", exArr)
+                    })
+                }
+                io {
+                    try {
+                        Api.adminPost(server, "/admin/api/config/${currentUid()}", body)
+                        withContext(Dispatchers.Main) { tip("访问控制已保存"); refreshCurrentPage() }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) { tip("保存失败: " + (e.message ?: "未知")) }
+                    }
+                }
+            }, 14)
+            DemoKit.put(agBox, card, 0)
         }
 
         DemoKit.put(col, DemoKit.sectionTitle(this, theme, "关于", "版本与说明"), 20)
@@ -1236,7 +1852,14 @@ class AdminMainActivity : ShellActivity() {
         val fAnn = MdField(this, theme, "公告", current?.str("announcement").orEmpty(), false, false)
         val fContact = MdField(this, theme, "联系方式", current?.str("contact").orEmpty(), false, false)
         val fSite = MdField(this, theme, "官网", current?.str("website").orEmpty(), false, false)
-        for (v in listOf<View>(fName, fDesc, fAnn, fContact, fSite)) DemoKit.put(col, v, 10)
+        
+        val fCurSym = MdField(this, theme, "代币符号（¥ / $ / 积分…）", (current?.str("currencySymbol") ?: "").ifEmpty { "¥" }, false, false)
+        val fCurRate = MdField(
+            this, theme, "显示倍率：1 额度 = 多少代币（10 = 充 1000 显示 10000）",
+            current?.get("currencyRate")?.takeIf { !it.isJsonNull }?.asDouble?.let { if (it == 1.0) "" else it.toLong().toString() } ?: "",
+            true, false,
+        )
+        for (v in listOf<View>(fName, fDesc, fAnn, fContact, fSite, fCurSym, fCurRate)) DemoKit.put(col, v, 10)
         UiKit.customDialog(this, theme, if (focusAnnouncement) "编辑公告" else "编辑服务点资料", col, "保存") {
             io {
                 Api.adminPost(server, "/admin/api/server-info", JsonObject().apply {
@@ -1245,13 +1868,33 @@ class AdminMainActivity : ShellActivity() {
                     addProperty("announcement", fAnn.text.trim())
                     addProperty("contact", fContact.text.trim())
                     addProperty("website", fSite.text.trim())
+                    addProperty("currencySymbol", fCurSym.text.trim().ifEmpty { "¥" })
+                    fCurRate.text.trim().toDoubleOrNull()?.let { if (it > 0) addProperty("currencyRate", it) }
                 })
                 withContext(Dispatchers.Main) {
                     tip("已保存")
+                    reloadCurrencyFromServer()
                     refreshCurrentPage()
                 }
             }
         }
+    }
+
+    
+    private fun reloadCurrencyFromServer() = io {
+        try {
+            val r = Api.adminGet(server, "/admin/api/server-info")
+            val o = r.objOrNull("serverInfo")
+            if (o != null) {
+                val changed = com.gaycore.app.data.Currency.update(
+                    o.str("currencySymbol").ifEmpty { null },
+                    o.get("currencyRate")?.takeIf { !it.isJsonNull }?.asDouble,
+                )
+                
+
+                if (changed) withContext(Dispatchers.Main) { refreshCurrentPage() }
+            }
+        } catch (_: Exception) { }
     }
 
     private fun openUserDebugDialog() {

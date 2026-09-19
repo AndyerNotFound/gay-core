@@ -29,17 +29,21 @@ import com.gaycore.app.theme.ThemeEngine
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-   
-                        
-  
-                                             
-                                 
-  
-                                   
-   
+
+
+
+
+
+
+
+
 class UiDemoActivity : BaseActivity() {
 
     private lateinit var theme: ThemeEngine
+
+    
+    override fun tintTheme(): ThemeEngine? = if (::theme.isInitialized) theme else null
+
     private lateinit var root: FrameLayout
     private lateinit var shellHost: FrameLayout
     private lateinit var content: FrameLayout
@@ -69,25 +73,25 @@ class UiDemoActivity : BaseActivity() {
     private var convoOpen = false
     private var selectedUser = 0
 
-                
+    
     private var homeEditMode = false
     private val homeSections = mutableListOf("server", "tickets", "metrics", "quick", "notice")
     private val homeHidden = mutableSetOf<String>()
 
-                                        
+    
     private var pageView: View? = null
     private var prevPage = Page.HOME
 
-                   
+    
     private enum class Nav {
-        UP_IN,                              
-        DOWN_IN,                         
-        CHILD_IN,             
-        CHILD_OUT,                  
-        NONE,              
+        UP_IN,      
+        DOWN_IN,    
+        CHILD_IN,   
+        CHILD_OUT,  
+        NONE,       
     }
 
-                                 
+    
     private data class DemoUser(
         val uid: String, val balance: String, val up: String, val down: String,
         val requests: String, val note: String, val banned: Boolean = false,
@@ -103,7 +107,7 @@ class UiDemoActivity : BaseActivity() {
         "查询活跃用户 SQL", "部署 CloudFlare 反代", "工单 114514 排查", "模型参数对比",
     )
 
-                               
+    
     private data class DemoTicket(val uid: String, val title: String, val time: String, val tone: String)
 
     private val demoTickets = listOf(
@@ -112,7 +116,7 @@ class UiDemoActivity : BaseActivity() {
         DemoTicket("UID 219174", "模型响应超时反馈", "3小时前", "warning"),
     )
 
-                                                                   
+    
     private data class DemoInstance(
         val name: String, val port: Int, val running: Boolean,
         val requests: Int, val errors: Int, val tls: Boolean,
@@ -125,7 +129,7 @@ class UiDemoActivity : BaseActivity() {
         DemoInstance("free-k3", 16389, false, 0, 0, true),
     )
 
-                         
+    
     private val noticeEn = Pair("Opening", listOf("This is a placeholder paragraph for the announcement body.", "The wavy lines in the sketch are replaced with sample text here."))
     private val noticeCn = Pair("开篇", listOf("这是一段公告正文的占位文字，用于展示排版效果。", "草图中的手写波浪线部分，此处以示例文本代替。"))
 
@@ -195,9 +199,9 @@ class UiDemoActivity : BaseActivity() {
     private fun txt(t: String, sizeSp: Float = 15f, bold: Boolean = false, colorName: String = "onSurface"): TextView =
         UiKit.text(this, t, sizeSp, bold, tc(colorName))
 
-                                                      
+    
 
-                                                       
+    
     private fun buildShell() {
         theme = makeTheme()
         theme.applyToWindow(this)
@@ -205,7 +209,7 @@ class UiDemoActivity : BaseActivity() {
         shellHost = FrameLayout(this)
         root.addView(shellHost, FrameLayout.LayoutParams(-1, -1))
 
-                                       
+        
         fab = UiKit.button(this, theme, "+", "filled")
         fab.textSize = 22f
         fab.setPadding(0, 0, 0, dp(2))
@@ -215,7 +219,7 @@ class UiDemoActivity : BaseActivity() {
             setMargins(0, 0, dp(20), dp(28))
         })
 
-                          
+        
         scrim = View(this).apply {
             setBackgroundColor(Color.BLACK)
             alpha = 0f
@@ -226,7 +230,7 @@ class UiDemoActivity : BaseActivity() {
         }
         root.addView(scrim, FrameLayout.LayoutParams(-1, -1))
 
-                                         
+        
         drawerWidth = min(dp(300), (resources.displayMetrics.widthPixels * 0.84f).roundToInt())
         drawer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -235,7 +239,7 @@ class UiDemoActivity : BaseActivity() {
         }
         root.addView(drawer, FrameLayout.LayoutParams(drawerWidth, -1))
 
-                                              
+        
         convoScrim = View(this).apply {
             setBackgroundColor(Color.BLACK)
             alpha = 0f
@@ -257,12 +261,12 @@ class UiDemoActivity : BaseActivity() {
         applyTheme(false)
     }
 
-       
-                 
-                                                 
-                                 
-                               
-       
+    
+
+
+
+
+
     private fun applyTheme(animate: Boolean) {
         theme = makeTheme()
         theme.applyToWindow(this)
@@ -342,14 +346,14 @@ class UiDemoActivity : BaseActivity() {
         titles.addView(titleView)
         titles.addView(subtitleView, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(1) })
         bar.addView(titles, LinearLayout.LayoutParams(0, -1, 1f).apply { marginStart = dp(6) })
-                                                    
+        
         topAction = FrameLayout(this)
         bar.addView(topAction, LinearLayout.LayoutParams(dp(44), dp(48)))
         updateTopBarAction()
         return bar
     }
 
-                       
+    
     private fun updateTopBarAction() {
         if (!::topAction.isInitialized) return
         topAction.removeAllViews()
@@ -362,7 +366,7 @@ class UiDemoActivity : BaseActivity() {
             click = {
                 val entering = !homeEditMode
                 homeEditMode = entering
-                                       
+                
                 renderPage(if (entering) Nav.UP_IN else Nav.DOWN_IN)
             }
         } else {
@@ -376,7 +380,7 @@ class UiDemoActivity : BaseActivity() {
     private fun fillDrawer(col: LinearLayout) {
         col.setBackgroundColor(tc("surfaceContainer"))
 
-                                    
+        
         val head = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(24), dp(20), dp(18))
@@ -388,11 +392,11 @@ class UiDemoActivity : BaseActivity() {
         av.setOnClickListener { page = Page.PROFILE; renderPage(); closeDrawer() }
         head.addView(av, LinearLayout.LayoutParams(dp(50), dp(50)))
         head.addView(txt("WetherFlar", 17f, true), LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(12) })
-        head.addView(txt("waterflar@gmail.com", 11.5f, false, "onSurfaceVariant"), LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(3) })
+        head.addView(txt("user@example.com", 11.5f, false, "onSurfaceVariant"), LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(3) })
         head.addView(txt("UID: Admin", 12f, true, "onSurfaceVariant"), LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
         col.addView(head, LinearLayout.LayoutParams(-1, -2))
 
-                      
+        
         drawerMenu = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val menuScroll = ScrollView(this).apply { isFillViewport = false }
         menuScroll.addView(drawerMenu, FrameLayout.LayoutParams(-1, -2))
@@ -403,7 +407,7 @@ class UiDemoActivity : BaseActivity() {
         pad.addView(menuScroll, LinearLayout.LayoutParams(-1, -2))
         col.addView(pad, LinearLayout.LayoutParams(-1, 0, 1f))
 
-                              
+        
         val foot = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(16), dp(12), dp(16), dp(18))
@@ -419,7 +423,7 @@ class UiDemoActivity : BaseActivity() {
             setOnClickListener { darkMode = !darkMode; rebuildTheme() }
         }
         val themeIcon = ImageView(this).apply {
-                                          
+            
             setImageResource(if (darkMode) R.drawable.ic_light_mode else R.drawable.ic_dark_mode)
             setImageTintList(ColorStateList.valueOf(tc("onSurfaceVariant")))
         }
@@ -475,7 +479,7 @@ class UiDemoActivity : BaseActivity() {
         scrim.animate().alpha(0f).setDuration(250).withEndAction { scrim.visibility = View.GONE }.start()
     }
 
-                                                          
+    
 
     private fun fillConvoPanel(col: LinearLayout) {
         col.setBackgroundColor(tc("surfaceContainer"))
@@ -534,7 +538,7 @@ class UiDemoActivity : BaseActivity() {
         col.addView(list, LinearLayout.LayoutParams(-1, -2))
     }
 
-                           
+    
     private fun buildConvoPanelInto() {
         if (!::convoPanel.isInitialized) return
         convoPanel.removeAllViews()
@@ -563,7 +567,7 @@ class UiDemoActivity : BaseActivity() {
         layoutParams = LinearLayout.LayoutParams(-1, dp(1))
     }
 
-                              
+    
     private fun autoNav(from: Page, to: Page): Nav {
         if (from == to) return Nav.NONE
         if (to == Page.USERDETAIL) return Nav.CHILD_IN
@@ -575,11 +579,11 @@ class UiDemoActivity : BaseActivity() {
         return if (b > a) Nav.UP_IN else Nav.DOWN_IN
     }
 
-                                    
+    
     private fun swapContent(newView: View, nav: Nav) {
         val lp = FrameLayout.LayoutParams(-1, -1)
         val old = pageView
-                                   
+        
         var i = 0
         while (i < content.childCount) {
             if (content.getChildAt(i) === old) i++ else content.removeViewAt(i)
@@ -609,7 +613,7 @@ class UiDemoActivity : BaseActivity() {
                 content.addView(newView, lp)
                 newView.animate().translationX(0f)
                     .setDuration(300).setInterpolator(DecelerateInterpolator()).start()
-                                             
+                
                 old.animate().translationX(-w * 0.24f)
                     .setDuration(300).setInterpolator(DecelerateInterpolator()).start()
             }
@@ -667,7 +671,7 @@ class UiDemoActivity : BaseActivity() {
         updateTopBarAction()
     }
 
-                                                        
+    
 
     private fun pageScroll(contentView: View): ScrollView {
         val scroll = ScrollView(this).apply {
@@ -691,7 +695,7 @@ class UiDemoActivity : BaseActivity() {
         parent.addView(child, lp)
     }
 
-                                                      
+    
 
     private fun homeSectionName(id: String): String = when (id) {
         "server" -> "服务器资料卡"
@@ -711,7 +715,7 @@ class UiDemoActivity : BaseActivity() {
         else -> R.drawable.ic_apps
     }
 
-                                     
+    
     private fun moveHomeSection(index: Int, delta: Int) {
         val to = index + delta
         if (to < 0 || to >= homeSections.size) return
@@ -720,7 +724,7 @@ class UiDemoActivity : BaseActivity() {
         renderPage(Nav.NONE)
     }
 
-                         
+    
     private fun openTicket(uid: String) {
         val idx = demoUsers.indexOfFirst { it.uid == uid }
         if (idx >= 0) openUserDetail(idx) else toast("Demo：该工单暂无可关联用户")
@@ -772,7 +776,7 @@ class UiDemoActivity : BaseActivity() {
         return pageScroll(col)
     }
 
-                                    
+    
     private fun homeLayoutEditor(): View {
         val col = pageColumn()
         put(col, sectionTitle("编辑首页布局", "调整板块顺序与显示状态"), 2)
@@ -887,7 +891,7 @@ class UiDemoActivity : BaseActivity() {
         return card
     }
 
-                                                        
+    
 
     private fun modelsPage(): View {
         val col = pageColumn()
@@ -957,7 +961,7 @@ class UiDemoActivity : BaseActivity() {
         return card
     }
 
-                                                        
+    
 
     private fun pluginsPage(): View {
         val col = pageColumn()
@@ -988,7 +992,7 @@ class UiDemoActivity : BaseActivity() {
         return card
     }
 
-                                                        
+    
 
     private fun usagePage(): View {
         val col = pageColumn()
@@ -1011,7 +1015,7 @@ class UiDemoActivity : BaseActivity() {
         return pageScroll(col)
     }
 
-                                                              
+    
 
     private fun playgroundPage(): View {
         val col = pageColumn()
@@ -1062,7 +1066,7 @@ class UiDemoActivity : BaseActivity() {
         return wrap
     }
 
-                                                        
+    
 
     private fun usersPage(): View {
         val col = pageColumn()
@@ -1118,7 +1122,7 @@ class UiDemoActivity : BaseActivity() {
         renderPage()
     }
 
-                                                        
+    
 
     private fun userDetailPage(): View {
         val u = demoUsers[selectedUser]
@@ -1210,7 +1214,7 @@ class UiDemoActivity : BaseActivity() {
         return card
     }
 
-                                                        
+    
 
     private fun noticePage(): View {
         val col = pageColumn()
@@ -1278,7 +1282,7 @@ class UiDemoActivity : BaseActivity() {
         return card
     }
 
-                                                        
+    
 
     private fun instancesPage(): View {
         val col = pageColumn()
@@ -1335,7 +1339,7 @@ class UiDemoActivity : BaseActivity() {
         return card
     }
 
-                                                        
+    
 
     private fun profilePage(): View {
         val col = pageColumn()
@@ -1380,7 +1384,7 @@ class UiDemoActivity : BaseActivity() {
         return card
     }
 
-                                                      
+    
 
     private fun themePage(): View {
         val col = pageColumn()
@@ -1433,7 +1437,7 @@ class UiDemoActivity : BaseActivity() {
         return card
     }
 
-                                                           
+    
 
     private fun settingsPage(): View {
         val col = pageColumn()
@@ -1469,7 +1473,7 @@ class UiDemoActivity : BaseActivity() {
         return card
     }
 
-                                                        
+    
 
     private fun sectionTitle(title: String, subtitle: String): View {
         val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -1756,7 +1760,7 @@ class UiDemoActivity : BaseActivity() {
     private fun toast(message: String) = UiKit.toast(this, message)
 
     private fun rebuildTheme() {
-                                                  
+        
         applyTheme(true)
     }
 }

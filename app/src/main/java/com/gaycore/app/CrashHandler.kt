@@ -10,10 +10,10 @@ import java.util.Date
 import java.util.Locale
 import kotlin.system.exitProcess
 
-   
-                                                       
-                        
-   
+
+
+
+
 object CrashHandler {
     private const val FILE = "crash.log"
 
@@ -30,14 +30,14 @@ object CrashHandler {
                     append('\n').append(sw.toString())
                 }
                 File(app.filesDir, FILE).writeText(txt)
-                                           
+                
                 try { app.getExternalFilesDir(null)?.let { File(it, "gaycore-crash.log").writeText(txt) } } catch (_: Throwable) {}
             } catch (_: Throwable) {}
             def?.uncaughtException(t, e) ?: exitProcess(2)
         }
     }
 
-                                            
+    
     fun peek(ctx: Context): String? {
         return try {
             val f = File(ctx.filesDir, FILE)

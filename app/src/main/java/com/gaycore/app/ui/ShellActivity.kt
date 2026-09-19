@@ -4,7 +4,9 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
@@ -18,34 +20,51 @@ import androidx.appcompat.app.AppCompatActivity
 import com.gaycore.app.R
 import com.gaycore.app.theme.ThemeEngine
 import com.google.android.material.button.MaterialButton
+import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-   
-                                               
-  
-                                                               
-                                             
-  
-                                
-                                                                    
-   
+
+
+
+
+
+
+
+
+
 abstract class ShellActivity : BaseActivity() {
 
-                                                        
+    
 
     data class ShellItem(val id: String, val title: String, val sub: String, val iconRes: Int)
     data class TopAction(val iconRes: Int, val desc: String, val onClick: () -> Unit)
     data class FabSpec(val iconRes: Int, val desc: String, val onClick: () -> Unit)
-    data class Identity(val avatarText: String, val title: String, val subtitle: String, val tag: String = "")
+    data class Identity(val avatarText: String, val title: String, val subtitle: String, val tag: String = "", val avatarUrl: String = "")
 
     protected enum class Nav { UP_IN, DOWN_IN, CHILD_IN, CHILD_OUT, NONE }
 
-                                                        
+    
 
     protected lateinit var theme: ThemeEngine
+
+    
+    override fun tintTheme(): ThemeEngine? = if (::theme.isInitialized) theme else null
+
     private lateinit var root: FrameLayout
-    private lateinit var shellHost: FrameLayout
+    
+
+
+
+    class SwipeHostLayout(ctx: android.content.Context) : FrameLayout(ctx) {
+        var childClaimedTouch = false
+        override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
+            childClaimedTouch = disallowIntercept
+            super.requestDisallowInterceptTouchEvent(disallowIntercept)
+        }
+    }
+    private lateinit var shellHost: SwipeHostLayout
     protected lateinit var content: FrameLayout
     private lateinit var titleView: TextView
     private lateinit var subtitleView: TextView
@@ -72,81 +91,90 @@ abstract class ShellActivity : BaseActivity() {
     private var prevPageId = ""
     private var pageView: View? = null
 
-                                
+    
     private class ChildPage(
         val title: String,
         val build: (LinearLayout) -> Unit,
-                                  
+        
         val topIcon: Int = 0,
         val topDesc: String = "",
         val onTop: (() -> Unit)? = null,
-                                    
+        
         val footer: ((LinearLayout) -> Unit)? = null,
     )
 
     private val childStack = ArrayList<ChildPage>()
     private var childHost: View? = null
 
-                                                        
+    
 
-                                
+    
     protected abstract fun createTheme(): ThemeEngine
 
-                                
+    
     protected abstract fun shellItems(): List<ShellItem>
 
-                             
+    
     protected abstract fun buildPage(id: String): View
 
-                       
+    
     protected open fun topActionFor(id: String): TopAction =
         TopAction(R.drawable.ic_refresh, "刷新") { onRefresh(id) }
 
-                           
+    
     protected open fun topActionOrNull(id: String): TopAction? = topActionFor(id)
 
     protected open fun onRefresh(id: String) {}
 
-       
-                 
-                                             
-                                        
-       
+    
+    protected open fun inlineBackAvailable(): Boolean = false
+
+    
+    protected open fun onInlineBack(): Boolean = false
+
+    
+
+
+
+
     protected open fun onShellResume() {}
 
-                           
+    
     protected open fun fabFor(id: String): FabSpec? = null
 
-                                 
+    
     protected open fun identity(): Identity? = null
 
-                    
+    
     protected open fun onSwitchServer() {}
 
-               
+    
     protected open fun onToggleDarkMode() {}
 
-                                
+    
     protected open fun recents(): MutableList<String> = mutableListOf()
 
     protected open fun onRecentPick(title: String) {}
 
-                                       
+    
     protected open fun banner(): View? = null
 
-                                  
+    
     protected open fun onBackExtra(): Boolean = false
 
-                                                 
+    
     protected open fun onChildBack(): Boolean = false
 
-                               
+    
+    protected open fun onChildOpening() {}
+
+    
     protected open fun onChildOpened() {}
 
-                                                      
+    
     protected open fun onShellRebuilt() {}
 
-                                                        
+    
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -159,17 +187,17 @@ abstract class ShellActivity : BaseActivity() {
         onShellResume()
     }
 
-                                                        
+    
 
     private fun buildShell() {
         theme = createTheme()
         theme.applyToWindow(this)
 
         root = FrameLayout(this)
-        shellHost = FrameLayout(this)
+        shellHost = SwipeHostLayout(this)
         root.addView(shellHost, FrameLayout.LayoutParams(-1, -1))
 
-                                   
+        
         fab = UiKit.button(this, theme, "", "filled")
         fab.setIconResource(R.drawable.ic_add)
         fab.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
@@ -183,7 +211,7 @@ abstract class ShellActivity : BaseActivity() {
             setMargins(0, 0, dp(20), dp(28))
         })
 
-                   
+        
         scrim = View(this).apply {
             setBackgroundColor(Color.BLACK)
             alpha = 0f
@@ -194,16 +222,18 @@ abstract class ShellActivity : BaseActivity() {
         }
         root.addView(scrim, FrameLayout.LayoutParams(-1, -1))
 
-                 
+        
         drawerWidth = min(dp(300), (resources.displayMetrics.widthPixels * 0.86f).roundToInt())
         drawer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             elevation = dp(8).toFloat()
-            translationX = -drawerWidth.toFloat()
+            
+
+            translationX = -(drawerWidth + dp(24)).toFloat()
         }
         root.addView(drawer, FrameLayout.LayoutParams(drawerWidth, -1))
 
-                    
+        
         convoScrim = View(this).apply {
             setBackgroundColor(Color.BLACK)
             alpha = 0f
@@ -217,7 +247,7 @@ abstract class ShellActivity : BaseActivity() {
         convoPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             elevation = dp(8).toFloat()
-            translationX = -convoWidth.toFloat()
+            translationX = -(convoWidth + dp(24)).toFloat()
         }
         root.addView(convoPanel, FrameLayout.LayoutParams(convoWidth, -1))
 
@@ -225,10 +255,10 @@ abstract class ShellActivity : BaseActivity() {
         applyTheme(false)
     }
 
-       
-                                       
-                             
-       
+    
+
+
+
     protected fun applyTheme(animate: Boolean) {
         val preferred = currentPageId
         theme = createTheme()
@@ -295,17 +325,28 @@ abstract class ShellActivity : BaseActivity() {
         return bar
     }
 
-                                      
+    
     private fun paintMenuButton() {
         if (!::menuBtn.isInitialized) return
         menuBtn.removeAllViews()
         val child = isChildOpen()
+        
+
+        val inline = !child && inlineBackAvailable()
+        val back = child || inline
         menuBtn.addView(
             DemoKit.iconButton(
                 this, theme,
-                if (child) R.drawable.ic_arrow_back else R.drawable.ic_menu,
-                if (child) "返回" else "打开侧边栏",
-            ) { if (child) closeChild() else openDrawer() },
+                if (back) R.drawable.ic_arrow_back else R.drawable.ic_menu,
+                if (back) "返回" else "打开侧边栏",
+            ) {
+                when {
+                    
+                    child -> if (!onChildBack()) closeChild()
+                    inline -> onInlineBack()
+                    else -> openDrawer()
+                }
+            },
             FrameLayout.LayoutParams(dp(44), dp(48)),
         )
     }
@@ -314,7 +355,7 @@ abstract class ShellActivity : BaseActivity() {
         if (!::topAction.isInitialized) return
         topAction.removeAllViews()
         if (isChildOpen()) {
-                                              
+            
             val cp = childStack.lastOrNull()
             if (cp != null && cp.topIcon != 0 && cp.onTop != null) {
                 topAction.addView(
@@ -336,11 +377,11 @@ abstract class ShellActivity : BaseActivity() {
         )
     }
 
-       
-                 
-                                               
-                                 
-       
+    
+
+
+
+
     private fun syncTopBar() {
         paintMenuButton()
         syncTitles()
@@ -377,7 +418,7 @@ abstract class ShellActivity : BaseActivity() {
         }
     }
 
-                                                       
+    
 
     private fun fillDrawer(col: LinearLayout) {
         col.setBackgroundColor(theme.color(this, "surfaceContainer"))
@@ -389,7 +430,12 @@ abstract class ShellActivity : BaseActivity() {
                 setPadding(dp(20), dp(24), dp(20), dp(18))
                 setBackgroundColor(theme.color(this@ShellActivity, "surfaceContainerHigh"))
             }
-            val av = DemoKit.avatar(this, id.avatarText, theme.color(this, "primary"), 50)
+            val av = if (id.avatarUrl.isNotEmpty()) {
+                
+                DemoKit.avatarAuto(this, theme, id.avatarUrl, id.avatarText, 50)
+            } else {
+                DemoKit.avatarSoft(this, theme, id.avatarText, 50)
+            }
             head.addView(av, LinearLayout.LayoutParams(dp(50), dp(50)))
             head.addView(DemoKit.txt(this, theme, id.title, 17f, true), LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(12) })
             if (id.subtitle.isNotEmpty()) {
@@ -429,7 +475,7 @@ abstract class ShellActivity : BaseActivity() {
         val themeIcon = ImageView(this).apply {
             setImageResource(if (dark) R.drawable.ic_light_mode else R.drawable.ic_dark_mode)
             setImageTintList(ColorStateList.valueOf(theme.color(this@ShellActivity, "onSurfaceVariant")))
-                                                          
+            
             alpha = 0f
             rotation = -90f
             animate().alpha(1f).rotation(0f).setDuration(260)
@@ -480,7 +526,7 @@ abstract class ShellActivity : BaseActivity() {
             drawerMenu.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(2) })
             menuRows.add(row)
         }
-                                     
+        
         if (!drawerMenuAnimated) {
             drawerMenuAnimated = true
             animateInStaggered(menuRows, 20)
@@ -499,11 +545,11 @@ abstract class ShellActivity : BaseActivity() {
         if (!drawerOpen) return
         drawerOpen = false
         val dw = if (drawer.width > 0) drawer.width else dp(300)
-        drawer.animate().translationX(-dw.toFloat()).setDuration(260).setInterpolator(AccelerateInterpolator()).start()
+        drawer.animate().translationX(-(dw + dp(24)).toFloat()).setDuration(260).setInterpolator(AccelerateInterpolator()).start()
         scrim.animate().alpha(0f).setDuration(250).withEndAction { scrim.visibility = View.GONE }.start()
     }
 
-                                                          
+    
 
     private fun fillConvoPanel(col: LinearLayout) {
         col.setBackgroundColor(theme.color(this, "surfaceContainer"))
@@ -581,11 +627,130 @@ abstract class ShellActivity : BaseActivity() {
         if (!convoOpen) return
         convoOpen = false
         val cw = if (convoPanel.width > 0) convoPanel.width else dp(248)
-        convoPanel.animate().translationX(-cw.toFloat()).setDuration(240).setInterpolator(AccelerateInterpolator()).start()
+        convoPanel.animate().translationX(-(cw + dp(24)).toFloat()).setDuration(240).setInterpolator(AccelerateInterpolator()).start()
         convoScrim.animate().alpha(0f).setDuration(220).withEndAction { convoScrim.visibility = View.GONE }.start()
     }
 
-                                                        
+    
+
+
+
+
+
+
+
+
+
+
+    private var swipeMode = 0          
+    private var swipeActive = false    
+    private var swipeStartX = 0f
+    private var swipeStartY = 0f
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (!::drawer.isInitialized || !::scrim.isInitialized || !::shellHost.isInitialized) {
+            return super.dispatchTouchEvent(ev)
+        }
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                swipeMode = 0; swipeActive = false
+                swipeStartX = ev.x; swipeStartY = ev.y
+                
+
+
+
+                shellHost.childClaimedTouch = false
+                if (drawerOpen) {
+                    swipeMode = 2
+                } else if (!convoOpen) {
+                    swipeMode = 1
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (swipeMode == 0) return super.dispatchTouchEvent(ev)
+                val dx = ev.x - swipeStartX
+                val dy = abs(ev.y - swipeStartY)
+                if (!swipeActive) {
+                    
+
+
+                    val delivered = super.dispatchTouchEvent(ev)
+                    if (shellHost.childClaimedTouch) {          
+                        swipeMode = 0
+                        return delivered
+                    }
+                    val slop = ViewConfiguration.get(this).scaledTouchSlop.toFloat() * 1.5f
+                    val wanted = if (swipeMode == 1) dx > slop else dx < -slop
+                    if (wanted && abs(dx) > dy) {
+                        
+                        if (swipeMode == 1 && contentTakesHorizontal(swipeStartX, swipeStartY, dx > 0)) {
+                            swipeMode = 0
+                            return delivered
+                        }
+                        swipeActive = true
+                        drawer.animate().cancel(); scrim.animate().cancel()
+                        if (convoOpen) closeConvo()
+                        if (swipeMode == 1) {
+                            drawerOpen = true
+                            scrim.visibility = View.VISIBLE
+                            scrim.alpha = 0f
+                        }
+                    } else if (dy > slop && dy > abs(dx)) {
+                        swipeMode = 0    
+                    }
+                    return delivered
+                }
+                if (swipeActive) { dragDrawer(dx); return true }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (swipeActive) {
+                    val w = max(drawer.width, dp(1)).toFloat()
+                    val progress = ((ev.x - swipeStartX) / w).coerceIn(-1f, 1f)
+                    swipeActive = false; swipeMode = 0
+                    if (progress > 0.32f) openDrawer() else closeDrawer()
+                    return true
+                }
+                swipeMode = 0
+            }
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    
+
+
+
+    private fun contentTakesHorizontal(x: Float, y: Float, back: Boolean): Boolean {
+        if (shellHost.childClaimedTouch) return true
+        return hitHorizontalScroller(shellHost, x, y, back)
+    }
+
+    
+    private fun hitHorizontalScroller(v: View, px: Float, py: Float, back: Boolean): Boolean {
+        if (v.visibility != View.VISIBLE) return false
+        if (px < v.left || px >= v.left + v.width || py < v.top || py >= v.top + v.height) return false
+        if (v is android.widget.EditText) return true
+        if (v.canScrollHorizontally(if (back) -1 else 1)) return true
+        if (v !is ViewGroup) return false
+        val cx = px - v.left + v.scrollX
+        val cy = py - v.top + v.scrollY
+        for (i in v.childCount - 1 downTo 0) {
+            if (hitHorizontalScroller(v.getChildAt(i), cx, cy, back)) return true
+        }
+        return false
+    }
+
+    
+    private fun dragDrawer(dx: Float) {
+        val w = max(drawer.width, dp(1)).toFloat()
+        val hidden = -(w + dp(24))
+        val base = if (swipeMode == 1) hidden else 0f
+        drawer.translationX = (base + dx).coerceIn(hidden, 0f)
+        val open = (drawer.translationX / w).coerceIn(0f, 1f)
+        scrim.alpha = 0.6f * open
+    }
+
+    
 
     private fun isChildOpen() = childStack.isNotEmpty()
 
@@ -594,8 +759,8 @@ abstract class ShellActivity : BaseActivity() {
         val items = shellItems()
         val a = items.indexOfFirst { it.id == from }
         val b = items.indexOfFirst { it.id == to }
-                                               
-                                                
+        
+
         if (a < 0 || b < 0) return Nav.UP_IN
         return if (b > a) Nav.UP_IN else Nav.DOWN_IN
     }
@@ -645,14 +810,14 @@ abstract class ShellActivity : BaseActivity() {
         pageView = newView
     }
 
-                
+    
     protected fun showPage(id: String, nav: Nav? = null) {
         if (!::content.isInitialized) return
         val items = shellItems()
-                                                  
-                                          
-                                                      
-                                           
+        
+
+            
+
             val pageId = if (items.any { it.id == id } || id in com.gaycore.app.sdui.LayoutMerger.BUILTIN_IDS) id
                          else (items.firstOrNull()?.id ?: return)
         currentPageId = pageId
@@ -667,6 +832,7 @@ abstract class ShellActivity : BaseActivity() {
         syncTopBar()
         updateFab()
         rebuildDrawerMenu()
+        retintLater()   
     }
 
     private fun syncTitles() {
@@ -679,7 +845,7 @@ abstract class ShellActivity : BaseActivity() {
         val parent = item?.title ?: currentPageId
         val child = childStack.lastOrNull()
         if (child != null) {
-                                          
+            
             titleView.text = child.title
             subtitleView.text = if (parent.isNotEmpty()) "返回 $parent" else ""
             return
@@ -688,7 +854,18 @@ abstract class ShellActivity : BaseActivity() {
         subtitleView.text = item?.sub ?: ""
     }
 
-                       
+    
+
+    protected fun retintAll() {
+        try { UiKit.retintTree(window?.decorView, theme) } catch (_: Throwable) { }
+    }
+
+    
+    protected fun retintLater() {
+        try { content.post { retintAll() } } catch (_: Throwable) { }
+    }
+
+    
     protected fun refreshCurrentPage() {
         if (isChildOpen()) {
             childStack.lastOrNull()?.let { rebuildChild(false) }
@@ -697,22 +874,31 @@ abstract class ShellActivity : BaseActivity() {
         showPage(currentPageId, Nav.NONE)
     }
 
-                                  
+    
+    protected fun refreshTopBar() { syncTopBar() }
+
+    
+
+    protected fun refreshDrawerMenu() { rebuildDrawerMenu() }
+
+    
     protected fun rebuildShell(animate: Boolean = true) {
         applyTheme(animate)
-                                                        
-                                                                          
+        retintAll()
+        
+        
+
         rebuildDrawerMenu()
         syncTopBar()
         updateFab()
     }
 
-                                                       
+    
 
-       
-                   
-                                         
-       
+    
+
+
+
     protected fun openChild(
         title: String,
         topIcon: Int = 0,
@@ -722,6 +908,9 @@ abstract class ShellActivity : BaseActivity() {
         build: (LinearLayout) -> Unit,
     ) {
         if (!::content.isInitialized) return
+        
+
+        onChildOpening()
         childStack.add(ChildPage(title, build, topIcon, topDesc, onTop, footer))
         rebuildChild(true)
         onChildOpened()
@@ -733,7 +922,7 @@ abstract class ShellActivity : BaseActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(theme.color(this@ShellActivity, "background"))
         }
-                                                 
+        
         val col = DemoKit.pageColumn(this, theme, bottomSpace = 40)
         try {
             top.build(col)
@@ -757,7 +946,7 @@ abstract class ShellActivity : BaseActivity() {
         updateFab()
     }
 
-                               
+    
     protected fun refreshChild() { rebuildChild(false) }
 
     protected fun closeChild() {
@@ -768,7 +957,7 @@ abstract class ShellActivity : BaseActivity() {
             rebuildChild(false)
             return
         }
-                     
+        
         val body = try {
             buildPage(currentPageId)
         } catch (e: Throwable) {
@@ -782,13 +971,14 @@ abstract class ShellActivity : BaseActivity() {
 
     protected fun childDepth(): Int = childStack.size
 
-                                                       
+    
 
     private fun setupBackHandler() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when {
                     isChildOpen() -> { if (!onChildBack()) closeChild() }
+                    inlineBackAvailable() -> { onInlineBack() }
                     drawerOpen -> closeDrawer()
                     convoOpen -> closeConvo()
                     onBackExtra() -> {}
@@ -799,7 +989,7 @@ abstract class ShellActivity : BaseActivity() {
         })
     }
 
-                                                         
+    
 
     protected fun dp(v: Number): Int = DemoKit.dp(this, v)
 

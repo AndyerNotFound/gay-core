@@ -29,12 +29,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-   
-                                                       
-  
-                                                      
-                                             
-   
+
+
+
+
+
+
 class AdminPages(
     private val act: AppCompatActivity,
     private val themeProvider: () -> ThemeEngine,
@@ -43,7 +43,7 @@ class AdminPages(
     private val openChild: (ChildSpec) -> Unit = { },
 ) {
 
-                                       
+    
     class ChildSpec(
         val title: String,
         val build: (LinearLayout) -> Unit,
@@ -55,25 +55,25 @@ class AdminPages(
 
     private fun child(title: String, build: (LinearLayout) -> Unit) = openChild(ChildSpec(title, build))
 
-                                               
-                             
+    
+    
     private fun adminInst(): String = server.adminTarget
 
     fun instName(): String = adminInst().ifEmpty { "default" }
 
-                                        
+    
     private fun dCol(): LinearLayout = LinearLayout(act).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(DemoKit.dp(act, 16), DemoKit.dp(act, 8), DemoKit.dp(act, 16), 0)
     }
 
-                                                     
+    
     private val theme: ThemeEngine get() = themeProvider()
 
-                                         
+    
     val playConvos = mutableListOf<String>()
 
-                                                      
+    
 
     private fun io(block: suspend () -> Unit) {
         act.lifecycleScope.launch(Dispatchers.IO) {
@@ -95,7 +95,7 @@ class AdminPages(
     private fun JsonObject.num(k: String): String =
         get(k)?.takeIf { !it.isJsonNull }?.let { if (it.isJsonPrimitive) it.asString else "" } ?: ""
 
-                                     
+    
     private fun shortTime(ts: String): String {
         if (ts.length < 16) return ts.ifEmpty { "—" }
         return try {
@@ -105,7 +105,7 @@ class AdminPages(
         }
     }
 
-                                       
+    
     private suspend fun uid(): Long {
         val st = Api.adminGet(server, "/admin/api/status")
         val arr = st.arr("instances") ?: return 1L
@@ -123,7 +123,7 @@ class AdminPages(
         Api.adminPost(server, "/admin/api/config/${uid()}", cfg)
     }
 
-                  
+    
     private fun scrollPage(): Pair<LinearLayout, LinearLayout> {
         val root = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
@@ -154,20 +154,20 @@ class AdminPages(
 
     private fun maskKey(k: String) = if (k.length <= 14) k else k.substring(0, 8) + "…" + k.substring(k.length - 4)
 
-       
-                      
-                                                                  
-                                     
-       
+    
+
+
+
+
     private fun isAdminIssued(k: JsonObject): Boolean {
         val by = k.str("by")
         if (by.isNotEmpty()) return by == "admin"
         return !(k.bool("isMain") && k.str("uid").isNotEmpty())
     }
 
-                    
+    
     private fun switchRowRef(title: String, desc: String, initial: Boolean): Pair<View, MaterialSwitch> {
-        val sw = MaterialSwitch(act).apply { isChecked = initial }
+        val sw = DemoKit.themeSwitch(act, theme, initial)
         val row = LinearLayout(act).apply { gravity = Gravity.CENTER_VERTICAL }
         val texts = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL }
         DemoKit.put(texts, DemoKit.txt(act, theme, title, 14f, true))
@@ -182,9 +182,9 @@ class AdminPages(
             if (secret) inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
 
-                                                                         
-          
-                                                                            
+    
+
+
 
     fun buildChannels(): View {
         val (root, content) = scrollPage()
@@ -286,19 +286,29 @@ class AdminPages(
         return root
     }
 
-                                                     
-                                                   
-                                   
-                                                   
-       
+    
+
+
+
+
     private var qgData: JsonObject? = null
     private var qgCols = 2
-    private val qgSel = LinkedHashSet<String>()                
+    private val qgSel = LinkedHashSet<String>()      
     private var qgBody: LinearLayout? = null
-    var onRefreshChild: () -> Unit = {}                                                   
+    private val qgCards = HashMap<String, View>()    
+    private var qgHint: TextView? = null             
+    private var qgFooterBar: LinearLayout? = null    
+    var onRefreshChild: () -> Unit = {}              
 
-                                                               
+    
     fun quickGroupFooter(bar: LinearLayout) {
+        qgFooterBar = bar
+        drawQGFooter()
+    }
+
+    
+    private fun drawQGFooter() {
+        val bar = qgFooterBar ?: return
         bar.removeAllViews()
         if (qgSel.isEmpty()) return
         val card = DemoKit.panel(act, theme, 0).apply {
@@ -315,7 +325,7 @@ class AdminPages(
             LinearLayout.LayoutParams(0, DemoKit.dp(act, 40), 1f).apply { marginStart = DemoKit.dp(act, 8) },
         )
         row.addView(
-            DemoKit.button(act, theme, "取消", "text") { qgSel.clear(); qgRefresh(); onRefreshChild() },
+            DemoKit.button(act, theme, "取消", "text") { qgClearSel() },
             LinearLayout.LayoutParams(-2, DemoKit.dp(act, 40)).apply { marginStart = DemoKit.dp(act, 8) },
         )
         DemoKit.put(card, row, 8)
@@ -343,28 +353,52 @@ class AdminPages(
 
     private fun qgRefresh() { qgBody?.let { drawQuickGroup() } }
 
+    
+
+
+    private fun qgToggle(key: String) {
+        if (!qgSel.remove(key)) qgSel.add(key)
+        updateQGMode()
+    }
+
+    private fun qgClearSel() {
+        qgSel.clear()
+        updateQGMode()
+    }
+
+    private fun qgHeaderText(): String =
+        if (qgSel.isNotEmpty()) "多选模式 · 已选 " + qgSel.size + " 个：单击继续加减选择，底部操作条批量处理"
+        else "单击卡片编辑模型 · 长按进入多选"
+
+    private fun updateQGMode() {
+        for ((k, v) in qgCards) paintQGCard(v, k)
+        qgHint?.let {
+            it.text = qgHeaderText()
+            it.setTextColor(theme.color(act, if (qgSel.isNotEmpty()) "primary" else "onSurfaceVariant"))
+        }
+        drawQGFooter()
+    }
+
+    private fun paintQGCard(card: View, key: String) {
+        card.background = if (key in qgSel) DemoKit.selectedBg(act, theme, 12) else DemoKit.panelBg(act, theme, 12)
+    }
+
     private fun drawQuickGroup() {
         val body = qgBody ?: return
         val d = qgData ?: return
         body.removeAllViews()
+        qgCards.clear()
         val groups = d.arr("groups") ?: JsonArray()
         val chs = d.arr("channels") ?: JsonArray()
         var total = 0
         for (c in chs) total += (c.asJsonObject.arr("models")?.size() ?: 0)
 
-                                
+        
         val head = DemoKit.panel(act, theme, 16)
         DemoKit.put(head, DemoKit.sectionTitle(act, theme, "快速分组", "共 " + total + " 个模型 · " + groups.size() + " 个分组"))
-        DemoKit.put(
-            head,
-            DemoKit.txt(
-                act, theme,
-                if (qgSel.isNotEmpty()) "多选模式 · 已选 " + qgSel.size + " 个：单击继续加减选择，底部操作条批量处理"
-                else "单击卡片编辑模型 · 长按进入多选",
-                11.5f, false, if (qgSel.isNotEmpty()) "primary" else "onSurfaceVariant",
-            ),
-            6,
-        )
+        val hint = DemoKit.txt(act, theme, qgHeaderText(), 11.5f, false, if (qgSel.isNotEmpty()) "primary" else "onSurfaceVariant")
+        qgHint = hint
+        DemoKit.put(head, hint, 6)
         val colRow = LinearLayout(act).apply { gravity = Gravity.CENTER_VERTICAL }
         colRow.addView(DemoKit.txt(act, theme, "列数", 12.5f, true, "onSurfaceVariant"))
         for (n in listOf(2, 3, 4)) {
@@ -386,26 +420,8 @@ class AdminPages(
         }
 
         val insts = d.arr("instances") ?: JsonArray()
-        for (ie in insts) {
-          val inst = ie.takeIf { it.isJsonObject }?.asJsonObject ?: continue
-          val iname = inst.str("name")
-                      
-          section(
-              body,
-              "实例 · " + iname + (if (inst.bool("current")) "（当前）" else ""),
-              (inst.arr("channels")?.size() ?: 0).toString() + " 个渠道",
-              22,
-          )
-          for (ce in (inst.arr("channels") ?: JsonArray())) {
-            val c = ce.asJsonObject
-            val chName = c.str("name")
-            val models = c.arr("models") ?: JsonArray()
-            section(body, "  " + chName, models.size().toString() + " 个模型", 14)
-            val cells = ArrayList<View>()
-            for (me in models) {
-                val m = me.asJsonObject
-                cells.add(qgCard(iname, chName, m))
-            }
+        
+        fun layoutGrid(cells: List<View>) {
             var i = 0
             while (i < cells.size) {
                 val row = LinearLayout(act).apply { gravity = Gravity.TOP }
@@ -422,6 +438,31 @@ class AdminPages(
                 }
                 DemoKit.put(body, row, 8)
             }
+        }
+        for (ie in insts) {
+          val inst = ie.takeIf { it.isJsonObject }?.asJsonObject ?: continue
+          val iname = inst.str("name")
+          val merged = inst.arr("merged")
+          if (merged != null && merged.size() > 0) {
+            
+
+            section(body, "实例 · " + iname + (if (inst.bool("current")) "（当前）" else ""),
+                "共 " + merged.size() + " 个模型（同名已合并）", 22)
+            val cells = ArrayList<View>()
+            for (me in merged) cells.add(qgCard(iname, "*", me.asJsonObject))
+            layoutGrid(cells)
+          } else {
+            section(body, "实例 · " + iname + (if (inst.bool("current")) "（当前）" else ""),
+                (inst.arr("channels")?.size() ?: 0).toString() + " 个渠道", 22)
+            for (ce in (inst.arr("channels") ?: JsonArray())) {
+              val c = ce.asJsonObject
+              val chName = c.str("name")
+              val models = c.arr("models") ?: JsonArray()
+              section(body, "  " + chName, models.size().toString() + " 个模型", 14)
+              val cells = ArrayList<View>()
+              for (me in models) cells.add(qgCard(iname, chName, me.asJsonObject))
+              layoutGrid(cells)
+            }
           }
         }
     }
@@ -433,115 +474,85 @@ class AdminPages(
         val alias = m.str("alias")
         val selected = key in qgSel
         val card = DemoKit.panel(act, theme, 12, ripple = true)
-        if (selected) {
-            card.background = DemoKit.roundedOutline(act, theme.color(act, "primaryContainer"), theme.color(act, "primary"), 12)
-        }
+        qgCards[key] = card
+        if (selected) card.background = DemoKit.selectedBg(act, theme, 12)
+        val isMerged = chName == "*"
         DemoKit.put(card, DemoKit.txt(act, theme, alias.ifEmpty { name }, 13f, true), 2)
-        DemoKit.put(card, DemoKit.txt(act, theme, iname + " · " + chName, 10f, false, "onSurfaceVariant"), 2)
+        
+        if (isMerged) {
+            val cc = m.get("chCount")?.takeIf { !it.isJsonNull }?.asInt ?: 1
+            DemoKit.put(card, DemoKit.txt(act, theme, iname + " · " + cc + " 个渠道", 10f, false, "onSurfaceVariant"), 2)
+        } else {
+            DemoKit.put(card, DemoKit.txt(act, theme, iname + " · " + chName, 10f, false, "onSurfaceVariant"), 2)
+        }
         if (alias.isNotEmpty()) DemoKit.put(card, DemoKit.txt(act, theme, name, 10.5f, false, "onSurfaceVariant"), 2)
         val row = LinearLayout(act).apply { gravity = Gravity.CENTER_VERTICAL }
         row.addView(DemoKit.badge(act, theme, group, if (group == "Default") "neutral" else "primary"))
+        if (isMerged && m.bool("diff")) {
+            row.addView(DemoKit.badge(act, theme, "配置不一致", "error"), LinearLayout.LayoutParams(-2, -2).apply { marginStart = DemoKit.dp(act, 4) })
+        }
         if (m.get("perCall") != null && !m.get("perCall").isJsonNull) {
             row.addView(DemoKit.badge(act, theme, "按次 $" + m.get("perCall").asDouble, "warning"), LinearLayout.LayoutParams(-2, -2).apply { marginStart = DemoKit.dp(act, 4) })
         } else if (m.obj("price") != null) {
             row.addView(DemoKit.badge(act, theme, "有价格", "success"), LinearLayout.LayoutParams(-2, -2).apply { marginStart = DemoKit.dp(act, 4) })
         }
         DemoKit.put(card, row, 8)
-                                        
-                              
+        
+
         card.setOnClickListener {
-            if (qgSel.isNotEmpty()) {
-                if (!qgSel.remove(key)) qgSel.add(key)
-                drawQuickGroup(); onRefreshChild()
-            } else {
-                qgEditModel(iname, chName, m)
-            }
+            if (qgSel.isNotEmpty()) qgToggle(key) else qgEditModel(iname, chName, m)
         }
-        card.setOnLongClickListener {
-            if (!qgSel.remove(key)) qgSel.add(key)
-            drawQuickGroup(); onRefreshChild()
-            true
-        }
+        card.setOnLongClickListener { qgToggle(key); true }
         return card
     }
 
-                              
+    
+    
+
+
+
+
+    
+
+
+
+
+
     private fun qgEditModel(iname: String, chName: String, m: JsonObject) {
         val name = m.str("name")
-        val d = qgData ?: return
-        val groups = (d.arr("groups") ?: JsonArray()).map { it.asJsonObject.str("name") }
-        var picked = m.str("group").ifEmpty { "Default" }
-        var perCallOn = m.get("perCall") != null && !m.get("perCall").isJsonNull
-
-        val col = dCol()
-        DemoKit.put(col, DemoKit.txt(act, theme, iname + " · " + chName + "  /  " + name, 15f, true))
-        val fAlias = field("对外名称（留空 = 用原名）", m.str("alias"))
-        DemoKit.put(col, fAlias, 12)
-        DemoKit.put(col, DemoKit.txt(act, theme, "所属分组", 12.5f, true, "onSurfaceVariant"), 12)
-        val gChips = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL }
-        var rebuildChips: () -> Unit = {}
-        rebuildChips = {
-            gChips.removeAllViews()
-            var gi = 0
-            while (gi < groups.size) {
-                val r = LinearLayout(act)
-                var k = 0
-                while (k < 3 && gi < groups.size) {
-                    val g = groups[gi]
-                    r.addView(
-                        DemoKit.chip(act, theme, g, null, g == picked) { picked = g; rebuildChips() },
-                        LinearLayout.LayoutParams(-2, -2).apply { if (k > 0) marginStart = DemoKit.dp(act, 6) },
-                    )
-                    k++; gi++
-                }
-                DemoKit.put(gChips, r, 6)
-            }
+        val uiPath = "/admin/ui/model-edit?instance=" + iname + "&channel=" + chName + "&model=" + name
+        val container = LinearLayout(act).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(DemoKit.dp(act, 16), DemoKit.dp(act, 12), DemoKit.dp(act, 16), DemoKit.dp(act, 20))
+            setBackgroundColor(theme.color(act, "surfaceContainer"))
         }
-        rebuildChips()
-        DemoKit.put(col, gChips, 6)
+        val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(act)
+        val ctl = SduiController(
+            act, act, server, "", theme,
+            admin = true,
+            adminApiScope = listOf("/admin/"),
+            inlineNav = true,
+            onClose = { sheet.dismiss() },
+            onFallback = { reason -> if (sheet.isShowing) sheet.dismiss(); UiKit.toast(act, "模型编辑页加载失败: $reason") },
+        )
+        ctl.loadInto(container, uiPath, showTitle = false)
+        
 
-        val swPerCall = com.google.android.material.materialswitch.MaterialSwitch(act).apply { isChecked = perCallOn }
-        val swRow = LinearLayout(act).apply { gravity = Gravity.CENTER_VERTICAL }
-        swRow.addView(DemoKit.txt(act, theme, "使用按次计费（元/次）", 13f, true), LinearLayout.LayoutParams(0, -2, 1f))
-        swRow.addView(swPerCall)
-        DemoKit.put(col, swRow, 14)
-
-        val p = m.obj("price") ?: JsonObject()
-        val fPerCall = field("按次价格（元/次）", if (perCallOn) m.get("perCall").asString else "")
-        val fIn = field("输入（元 / 1M tokens）", p.num("in"))
-        val fOut = field("输出（元 / 1M tokens）", p.num("out"))
-        val fCW = field("缓存写入（元 / 1M tokens）", p.num("cacheWrite"))
-        val fCR = field("缓存读取（元 / 1M tokens）", p.num("cacheRead"))
-        DemoKit.put(col, fPerCall, 8)
-        DemoKit.put(col, fIn, 8)
-        DemoKit.put(col, fOut, 8)
-        DemoKit.put(col, fCW, 8)
-        DemoKit.put(col, fCR, 8)
-        DemoKit.put(col, DemoKit.txt(act, theme, "两种计费方式二选一：开了「按次计费」就按次，否则按 token 单价；都不填 = 只按分组倍率。", 11f, false, "onSurfaceVariant"), 8)
-
-        UiKit.customDialog(act, theme, "编辑模型", col, "保存") {
-            val body = JsonObject().apply {
-                addProperty("action", "setModel")
-                addProperty("instance", iname)
-                addProperty("channel", chName)
-                addProperty("model", name)
-                addProperty("group", picked)
-                addProperty("alias", fAlias.text.trim())
-                addProperty("perCall", if (swPerCall.isChecked) (fPerCall.text.trim().toDoubleOrNull() ?: 0.0) else null)
-                if (!swPerCall.isChecked) {
-                    add("price", JsonObject().apply {
-                        addProperty("in", fIn.text.trim().toDoubleOrNull() ?: 0.0)
-                        addProperty("out", fOut.text.trim().toDoubleOrNull() ?: 0.0)
-                        addProperty("cacheWrite", fCW.text.trim().toDoubleOrNull() ?: 0.0)
-                        addProperty("cacheRead", fCR.text.trim().toDoubleOrNull() ?: 0.0)
-                    })
-                }
-            }
-            qgPost(body, "已保存")
+        val sv = androidx.core.widget.NestedScrollView(act).apply { addView(container) }
+        sheet.setContentView(sv)
+        
+        sheet.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        sheet.setOnShowListener {
+            sheet.behavior.state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
+            sheet.behavior.skipCollapsed = true
+            UiKit.retintTree(container, theme)
+            
+            UiKit.tintDialogWindow(sheet, theme, bottomSheet = true)
         }
+        sheet.show()
     }
 
-                          
+    
     private fun qgBulkGroup() {
         val d = qgData ?: return
         val groups = (d.arr("groups") ?: JsonArray()).map { it.asJsonObject.str("name") }
@@ -569,14 +580,27 @@ class AdminPages(
     private fun qgBulkPrice() {
         val col = dCol()
         DemoKit.put(col, DemoKit.txt(act, theme, "给选中的 " + qgSel.size + " 个模型套一个价格：", 13f, true))
-        val fIn = field("输入（元 / 1M）", "0", numeric = true)
-        val fOut = field("输出（元 / 1M）", "0", numeric = true)
-        val fCW = field("缓存写入（元 / 1M）", "0", numeric = true)
-        val fCR = field("缓存读取（元 / 1M）", "0", numeric = true)
+        val fIn = field("输入（" + com.gaycore.app.data.Currency.symbol + " / 1M）", "0", numeric = true)
+        val fOut = field("输出（" + com.gaycore.app.data.Currency.symbol + " / 1M）", "0", numeric = true)
+        val fCW = field("缓存写入（" + com.gaycore.app.data.Currency.symbol + " / 1M）", "0", numeric = true)
+        val fCR = field("缓存读取（" + com.gaycore.app.data.Currency.symbol + " / 1M）", "0", numeric = true)
         DemoKit.put(col, fIn, 10); DemoKit.put(col, fOut, 8); DemoKit.put(col, fCW, 8); DemoKit.put(col, fCR, 8)
+        
+
+
+        val (swRow, swPerCall) = switchRowRef("同时修改按次计费", "填数值 = 设为按次价；留空 = 清除按次回到按量", false)
+        val fPC = field("按次价格（" + com.gaycore.app.data.Currency.symbol + " / 次）", "", numeric = true)
+        fPC.edit.isEnabled = false; fPC.alpha = 0.45f
+        swPerCall.setOnCheckedChangeListener { _, c -> fPC.edit.isEnabled = c; fPC.alpha = if (c) 1f else 0.45f }
+        DemoKit.put(col, swRow, 12); DemoKit.put(col, fPC, 8)
         UiKit.customDialog(act, theme, "批量改价", col, "应用") {
             qgPost(JsonObject().apply {
                 addProperty("action", "bulk")
+                if (swPerCall.isChecked) {
+                    val pc = fPC.text.trim()
+                    if (pc.isEmpty()) add("perCall", com.google.gson.JsonNull.INSTANCE)
+                    else addProperty("perCall", pc.toDoubleOrNull() ?: 0.0)
+                }
                 add("price", JsonObject().apply {
                     addProperty("in", fIn.text.trim().toDoubleOrNull() ?: 0.0)
                     addProperty("out", fOut.text.trim().toDoubleOrNull() ?: 0.0)
@@ -602,7 +626,7 @@ class AdminPages(
         return arr
     }
 
-                                   
+    
     private fun qgGroupSheet() {
         val d = qgData ?: return
         val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(act)
@@ -647,6 +671,8 @@ class AdminPages(
         }
         paint()
         sheet.setContentView(box)
+        
+        sheet.setOnShowListener { UiKit.tintDialogWindow(sheet, theme, bottomSheet = true) }
         sheet.show()
     }
 
@@ -695,10 +721,10 @@ class AdminPages(
         }
     }
 
-                                                                      
-                                                                      
-                                         
-       
+    
+
+
+
     fun buildProxiesView(host: LinearLayout) {
         val body = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL }
         DemoKit.put(host, body)
@@ -852,7 +878,7 @@ class AdminPages(
         onRefreshChild()
     }
 
-                                   
+    
     private fun runProbe(onDone: () -> Unit) = io {
         val r = try { Api.adminPost(server, "/plugins/probe/run", JsonObject()) } catch (e: Exception) {
             main { UiKit.toast(act, "探测失败: " + (e.message ?: "") + "（probe 插件可能未启用）") }
@@ -943,9 +969,9 @@ class AdminPages(
             io {
                 val c = config()
                 val arr = c.arr("channels") ?: JsonArray().also { c.add("channels", it) }
-                                           
-                                                                 
-                                                                     
+                
+
+
                 val oldName = existing?.str("name") ?: ""
                 val inCfg = if (oldName.isNotEmpty())
                     arr.firstOrNull { it.isJsonObject && it.asJsonObject.str("name") == oldName }?.asJsonObject
@@ -975,9 +1001,9 @@ class AdminPages(
         }
     }
 
-                                                                         
-            
-                                                                            
+    
+
+
 
     fun buildModels(): View {
         val (root, content) = scrollPage()
@@ -987,7 +1013,7 @@ class AdminPages(
             val channels = cfg.arr("channels") ?: JsonArray()
             val ms = try { Api.adminGet(server, "/plugins/model-sync/models") } catch (_: Exception) { null }
             val pc = try { Api.adminGet(server, "/admin/api/plugin-config/${uid()}/model-sync") } catch (_: Exception) { null }
-                                                              
+            
             val g = try { Api.adminGet(server, "/plugins/model-square/admin/groups") } catch (_: Exception) { null }
             main {
                 content.removeAllViews()
@@ -1002,7 +1028,7 @@ class AdminPages(
                         totalModels += (ce.asJsonObject.arr("models")?.size() ?: 0)
                     }
                 }
-                                        
+                
                 if (insts.size() == 0) {
                     totalChannels = channels.size()
                     for (e in channels) {
@@ -1028,7 +1054,7 @@ class AdminPages(
                     ),
                     10,
                 )
-                                                 
+                
                 if (insts.size() > 0) {
                     val ic = DemoKit.panel(act, theme, 16)
                     DemoKit.put(ic, DemoKit.txt(act, theme, "按实例", 14f, true), 0)
@@ -1046,7 +1072,7 @@ class AdminPages(
                     DemoKit.put(content, ic, 12)
                 }
 
-                                    
+                
                 val op = DemoKit.panel(act, theme, 16)
                 DemoKit.put(op, DemoKit.txt(act, theme, "上游同步", 16f, true))
                 val last = ms?.obj("lastRun")
@@ -1069,7 +1095,7 @@ class AdminPages(
                 DemoKit.put(op, acts, 12)
                 DemoKit.put(content, op, 12)
 
-                                               
+                
                 val auto = DemoKit.panel(act, theme, 16)
                 val mcfg = pc?.obj("config") ?: JsonObject()
                 val curIv = mcfg.long("intervalHours").takeIf { it > 0 } ?: 24L
@@ -1095,7 +1121,7 @@ class AdminPages(
                 )
                 DemoKit.put(content, auto, 14)
 
-                                    
+                
                 section(content, "渠道模型", "共 " + channels.size() + " 个渠道", 20)
                 if (channels.size() == 0) {
                     val card = DemoKit.panel(act, theme, 16)
@@ -1166,31 +1192,40 @@ class AdminPages(
         return root
     }
 
-                                                   
+    
     private fun syncModels(only: String?, onDone: () -> Unit) = io {
-        val body = JsonObject()
-        if (only != null) body.addProperty("channel", only)
-        val r = Api.adminPost(server, "/plugins/model-sync/run", body)
-        val results = r.obj("results") ?: JsonObject()
-        val sb = StringBuilder()
-        var addedTotal = 0
-        for ((k, v) in results.entrySet()) {
-            val o = v.takeIf { it.isJsonObject }?.asJsonObject
-            if (o != null && o.bool("ok")) {
-                addedTotal += o.long("added").toInt()
-                sb.append("✓ ").append(k).append("    上游 ").append(o.long("total")).append(" 个，新增 ").append(o.long("added")).append(" 个\n")
-            } else {
-                sb.append("✗ ").append(k).append("    ").append(o?.str("error") ?: "失败").append('\n')
+        try {
+            val body = JsonObject()
+            if (only != null) body.addProperty("channel", only)
+            val r = Api.adminPost(server, "/plugins/model-sync/run", body)
+            val results = r.obj("results") ?: JsonObject()
+            val sb = StringBuilder()
+            var addedTotal = 0
+            for ((k, v) in results.entrySet()) {
+                val o = v.takeIf { it.isJsonObject }?.asJsonObject
+                if (o != null && o.bool("ok")) {
+                    addedTotal += o.long("added").toInt()
+                    sb.append("✓ ").append(k).append("    上游 ").append(o.long("total")).append(" 个，新增 ").append(o.long("added")).append(" 个\n")
+                } else {
+                    sb.append("✗ ").append(k).append("    ").append(o?.str("error") ?: "失败").append('\n')
+                }
             }
-        }
-        val text = sb.toString().trim().ifEmpty { "没有可同步的渠道" } + "\n\n本次共新增 " + addedTotal + " 个模型"
-        main {
-            onDone()
-            UiKit.infoDialog(act, theme, if (only != null) "同步「" + only + "」" else "同步全部渠道", text)
+            val text = sb.toString().trim().ifEmpty { "没有可同步的渠道" } + "\n\n本次共新增 " + addedTotal + " 个模型"
+            main {
+                onDone()
+                UiKit.infoDialog(act, theme, if (only != null) "同步「" + only + "」" else "同步全部渠道", text)
+            }
+        } catch (e: Exception) {
+            
+
+            main {
+                onDone()
+                UiKit.infoDialog(act, theme, "同步失败", (e.message ?: "请求失败") + "\n\n常见原因：model-sync 插件未启用，或该实例端口不通。")
+            }
         }
     }
 
-                                                               
+    
     private fun saveModelSync(enable: Boolean, intervalHours: Long, onDone: () -> Unit) = io {
         val iv = if (intervalHours < 1) 24L else intervalHours
         Api.adminPost(
@@ -1206,7 +1241,7 @@ class AdminPages(
         }
     }
 
-                                     
+    
     private fun openModelOverview(ms: JsonObject?, onlyChannel: String? = null) {
         child(if (onlyChannel != null) "模型 · " + onlyChannel else "模型总览") { host ->
             buildModelOverview(host, ms, onlyChannel)
@@ -1222,7 +1257,7 @@ class AdminPages(
             DemoKit.put(host, card, 2)
             return
         }
-                             
+        
         val all = ArrayList<Pair<String, String>>()
         for (e in arr) {
             val o = e.takeIf { it.isJsonObject }?.asJsonObject ?: continue
@@ -1309,9 +1344,9 @@ class AdminPages(
         }
     }
 
-                                                                         
-            
-                                                                            
+    
+
+
 
     fun buildPlugins(): View {
         val (root, content) = scrollPage()
@@ -1396,7 +1431,7 @@ class AdminPages(
             }
         }
 
-                                          
+        
         fQ.edit.addTextChangedListener(object : android.text.TextWatcher {
             override fun afterTextChanged(e: android.text.Editable?) { drawList() }
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -1407,7 +1442,7 @@ class AdminPages(
         return root
     }
 
-                                                
+    
     private fun setPluginEnabled(pid: String, enable: Boolean, onDone: () -> Unit) = io {
         try {
             Api.adminPost(server, "/admin/api/plugin-enable", JsonObject().apply {
@@ -1419,7 +1454,7 @@ class AdminPages(
         }
     }
 
-                           
+    
     private fun enableAll(enable: Boolean, onDone: () -> Unit) = io {
         try {
             Api.adminPost(server, "/admin/api/plugin-enable", JsonObject().apply {
@@ -1468,8 +1503,7 @@ class AdminPages(
         DemoKit.put(tc, DemoKit.txt(act, theme, bits.joinToString(" · "), 11.5f, false, "onSurfaceVariant"), 3)
         row.addView(tc, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = DemoKit.dp(act, 10) })
         row.addView(
-            com.google.android.material.materialswitch.MaterialSwitch(act).apply {
-                isChecked = enabled
+            DemoKit.themeSwitch(act, theme, enabled).apply {
                 setOnCheckedChangeListener { _, v -> setPluginEnabled(pid, v, onChanged) }
             },
             LinearLayout.LayoutParams(-2, -2),
@@ -1569,7 +1603,7 @@ class AdminPages(
                         "number" -> {
                             val et = field(label + "  ·  " + key, cur?.asString ?: "", numeric = true)
                             DemoKit.put(card, et, 10)
-                            editors.add(key to { et.text.trim().toLongOrNull() })
+                            editors.add(key to { et.text.trim().toDoubleOrNull() })
                         }
                         else -> {
                             val et = field(label + "  ·  " + key, cur?.asString ?: "", secret = secret)
@@ -1626,13 +1660,12 @@ class AdminPages(
         }
     }
 
-                                                                         
-                            
-                                                                            
+    
+
+
 
     fun canBuildNative(pluginId: String): Boolean =
-        pluginId == "auth-user" || pluginId == "auth-cardkey" ||
-            pluginId == "tunnel" || pluginId == "proxy"
+        pluginId == "auth-user" || pluginId == "tunnel" || pluginId == "proxy"
 
 
     fun buildPluginWeb(pluginId: String, adminPage: String, host: LinearLayout) {
@@ -1655,6 +1688,18 @@ class AdminPages(
                 view.evaluateJavascript(js, null)
             }
         }
+        
+        web.webChromeClient = object : android.webkit.WebChromeClient() {
+            override fun onShowFileChooser(
+                webView: android.webkit.WebView,
+                cb: android.webkit.ValueCallback<Array<android.net.Uri>>,
+                params: android.webkit.WebChromeClient.FileChooserParams,
+            ): Boolean {
+                val a = act as? AdminMainActivity ?: return false
+                a.launchFileChooser(cb, params.createIntent())
+                return true
+            }
+        }
         val base = Api.base(server)
         val key = server.adminKey() ?: ""
         android.webkit.CookieManager.getInstance().setCookie(base, "adminKey=" + key)
@@ -1662,7 +1707,7 @@ class AdminPages(
         web.loadUrl(base + "/plugins/" + pluginId + "/" + adminPage)
     }
 
-                                 
+    
     private fun pluginThemeCss(): String {
         val m = mapOf(
             "--md-sys-color-primary" to "primary", "--md-sys-color-on-primary" to "onPrimary",
@@ -1700,9 +1745,9 @@ class AdminPages(
 
     private fun hex(c: Int) = String.format("#%06X", 0xFFFFFF and c)
 
-                                                                         
-                  
-                                                                            
+    
+
+
 
     fun buildPlayground(): View {
         val root = LinearLayout(act).apply {
@@ -1717,7 +1762,7 @@ class AdminPages(
         DemoKit.put(root, streamScroll, 0, ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
 
         var redraw: () -> Unit = {}
-        val msgs = ArrayList<Pair<Boolean, String>>()               
+        val msgs = ArrayList<Pair<Boolean, String>>()   
         var model = ""
         var reason = 1
         val reasons = listOf("Low", "Medium", "High", "XHigh", "Max", "Ultra")
@@ -1731,17 +1776,26 @@ class AdminPages(
         }
         val inputRow = LinearLayout(act).apply { gravity = Gravity.CENTER_VERTICAL }
         val input = DemoKit.chatInput(act, theme, "输入消息…", 1).apply {
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            
+            layoutParams = LinearLayout.LayoutParams(0, DemoKit.dp(act, 46), 1f)
         }
-        val sendBtn = UiKit.button(act, theme, "", "filled")
-        sendBtn.setIconResource(R.drawable.ic_send)
-        sendBtn.contentDescription = "发送"
+        val sendBtn = UiKit.button(act, theme, "", "filled").apply {
+            setIconResource(R.drawable.ic_send)
+            contentDescription = "发送"
+            
+
+            insetTop = 0
+            insetBottom = 0
+            cornerRadius = DemoKit.dp(act, 23)
+            iconSize = DemoKit.dp(act, 20)
+            iconPadding = 0
+        }
         inputRow.addView(input)
         inputRow.addView(sendBtn, LinearLayout.LayoutParams(DemoKit.dp(act, 46), DemoKit.dp(act, 46)).apply { marginStart = DemoKit.dp(act, 8) })
         val chipLine = LinearLayout(act).apply { gravity = Gravity.CENTER_VERTICAL }
         val modelChip = DemoKit.chip(act, theme, "模型…", R.drawable.ic_tune) {
             if (models.isEmpty()) { UiKit.toast(act, "模型列表加载中…"); return@chip }
-            bottomSheet("选择模型", models, models.indexOf(model)) { i ->
+            bottomSheet("选择模型", models, models.indexOf(model), searchable = true) { i ->
                 model = models[i]
                 redraw()
             }
@@ -1755,14 +1809,14 @@ class AdminPages(
         chipLine.addView(modelChip)
         chipLine.addView(reasonChip, LinearLayout.LayoutParams(-2, -2).apply { marginStart = DemoKit.dp(act, 8) })
         chipLine.addView(View(act), LinearLayout.LayoutParams(0, 1, 1f))
-        chipLine.addView(DemoKit.chip(act, theme, "最近对话", R.drawable.ic_chat) { openConvo() })
+        chipLine.addView(DemoKit.chip(act, theme, "对话", R.drawable.ic_chat) { openConvo() })
         val clearChip = DemoKit.chip(act, theme, "清空", R.drawable.ic_delete) {
             msgs.clear()
             redraw()
         }
-        chipLine.addView(clearChip, LinearLayout.LayoutParams(-2, -2).apply { marginStart = DemoKit.dp(act, 8) })
+        chipLine.addView(clearChip, LinearLayout.LayoutParams(-2, -2).apply { marginStart = DemoKit.dp(act, 6) })
         composer.addView(inputRow)
-        composer.addView(chipLine, LinearLayout.LayoutParams(-1, -2).apply { topMargin = DemoKit.dp(act, 8) })
+        composer.addView(chipLine, LinearLayout.LayoutParams(-1, -2).apply { topMargin = DemoKit.dp(act, 6) })
         root.addView(composer, LinearLayout.LayoutParams(-1, -2))
 
         redraw = {
@@ -1776,7 +1830,7 @@ class AdminPages(
             for ((mine, text) in msgs) {
                 DemoKit.put(stream, DemoKit.chatBubble(act, theme, text, mine, maxW), 10)
             }
-            modelChip.text = if (model.isEmpty()) "模型…" else model
+            modelChip.text = if (model.isEmpty()) "模型…" else if (model.length > 12) model.take(11) + "…" else model
             reasonChip.text = "推理强度 " + reasons[reason]
         }
 
@@ -1827,7 +1881,7 @@ class AdminPages(
         sendBtn.setOnClickListener { send() }
         input.setOnEditorActionListener { _, _, _ -> send(); true }
 
-                   
+        
         io {
             try {
                 val r = Api.get(Api.base(server) + "/v1/models", Api.adminUserHeaders(server))
@@ -1847,39 +1901,83 @@ class AdminPages(
         return root
     }
 
-    private fun bottomSheet(title: String, options: List<String>, selected: Int = -1, onPick: (Int) -> Unit) {
+    
+
+
+
+    private fun bottomSheet(title: String, options: List<String>, selected: Int = -1, searchable: Boolean = false, onPick: (Int) -> Unit) {
         val dlg = com.google.android.material.bottomsheet.BottomSheetDialog(act)
         val col = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(DemoKit.dp(act, 12), DemoKit.dp(act, 16), DemoKit.dp(act, 12), DemoKit.dp(act, 20))
             setBackgroundColor(theme.color(act, "surfaceContainer"))
         }
-        DemoKit.put(col, DemoKit.txt(act, theme, title, 16f, true), 0)
-        for ((i, o) in options.withIndex()) {
-            val row = LinearLayout(act).apply {
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(DemoKit.dp(act, 12), DemoKit.dp(act, 12), DemoKit.dp(act, 12), DemoKit.dp(act, 12))
-                background = DemoKit.rounded(act, if (i == selected) theme.color(act, "secondaryContainer") else Color.TRANSPARENT, 12)
-                isClickable = true
-                setOnClickListener { dlg.dismiss(); onPick(i) }
+        DemoKit.put(col, DemoKit.txt(act, theme, title + if (options.size > 1) "（共 " + options.size + " 项）" else "", 16f, true), 0)
+
+        val listHost = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL }
+        
+
+
+
+        val sv = androidx.core.widget.NestedScrollView(act).apply { addView(listHost, FrameLayout.LayoutParams(-1, -2)) }
+        var filter = ""
+        var rowCount = options.size
+        fun draw() {
+            listHost.removeAllViews()
+            val kw = filter.trim().lowercase()
+            val shown = options.withIndex().filter { kw.isEmpty() || it.value.lowercase().contains(kw) }
+            rowCount = shown.size
+            if (shown.isEmpty()) {
+                DemoKit.put(listHost, DemoKit.txt(act, theme, "没有匹配的项", 13f, false, "onSurfaceVariant"), 10)
             }
-            row.addView(DemoKit.txt(act, theme, o, 14f, i == selected), LinearLayout.LayoutParams(0, -2, 1f))
-            if (i == selected) {
-                val ic = android.widget.ImageView(act).apply {
-                    setImageResource(R.drawable.ic_check)
-                    setImageTintList(ColorStateList.valueOf(theme.color(act, "primary")))
+            for ((i, o) in shown) {
+                val row = LinearLayout(act).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(DemoKit.dp(act, 12), DemoKit.dp(act, 12), DemoKit.dp(act, 12), DemoKit.dp(act, 12))
+                    background = DemoKit.rounded(act, if (i == selected) theme.color(act, "secondaryContainer") else Color.TRANSPARENT, 12)
+                    isClickable = true
+                    setOnClickListener { dlg.dismiss(); onPick(i) }
                 }
-                row.addView(ic, LinearLayout.LayoutParams(DemoKit.dp(act, 20), DemoKit.dp(act, 20)))
+                row.addView(DemoKit.txt(act, theme, o, 14f, i == selected), LinearLayout.LayoutParams(0, -2, 1f))
+                if (i == selected) {
+                    val ic = android.widget.ImageView(act).apply {
+                        setImageResource(R.drawable.ic_check)
+                        setImageTintList(ColorStateList.valueOf(theme.color(act, "primary")))
+                    }
+                    row.addView(ic, LinearLayout.LayoutParams(DemoKit.dp(act, 20), DemoKit.dp(act, 20)))
+                }
+                DemoKit.put(listHost, row, 4)
             }
-            DemoKit.put(col, row, 4)
+            
+            val maxH = (act.resources.displayMetrics.heightPixels * 0.62f).toInt()
+            val want = DemoKit.dp(act, 46) * rowCount + DemoKit.dp(act, 10)
+            sv.layoutParams = LinearLayout.LayoutParams(-1, minOf(want, maxH))
         }
+        if (searchable) {
+            val f = MdField(act, theme, "搜索", "", false, true)
+            f.edit.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) { filter = s?.toString() ?: ""; draw() }
+            })
+            DemoKit.put(col, f, 10)
+        }
+        draw()
+        col.addView(sv)
         dlg.setContentView(col)
+        
+
+        dlg.setOnShowListener {
+            dlg.behavior.state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
+            dlg.behavior.skipCollapsed = true
+            UiKit.tintDialogWindow(dlg, theme, bottomSheet = true)
+        }
         dlg.show()
     }
 
-                                                                         
-             
-                                                                            
+    
+
+
 
     fun buildUsers(): View {
         val root = LinearLayout(act).apply {
@@ -1894,7 +1992,7 @@ class AdminPages(
         }
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
 
-                     
+        
         val footer = LinearLayout(act).apply {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(DemoKit.dp(act, 12), DemoKit.dp(act, 8), DemoKit.dp(act, 12), DemoKit.dp(act, 12))
@@ -1915,7 +2013,7 @@ class AdminPages(
         var toolsHost: LinearLayout? = null
         var seg: DemoKit.SegmentedButtons? = null
 
-                                      
+        
         fun renderList() {
             val list = listHost ?: return
             list.removeAllViews()
@@ -1940,7 +2038,7 @@ class AdminPages(
                 }
             } else {
                 var kk = (0 until keysCache.size()).map { keysCache.get(it).asJsonObject }
-                                                          
+                
                 val allCount = kk.size
                 if (!showUserKeys) kk = kk.filter { isAdminIssued(it) }
                 if (q.isNotEmpty()) kk = kk.filter { o ->
@@ -1962,7 +2060,7 @@ class AdminPages(
             DemoKit.animateInStaggered(cards, 22)
         }
 
-                                                                
+        
         fun drawTools() {
             val tools = toolsHost ?: return
             tools.removeAllViews()
@@ -1994,10 +2092,10 @@ class AdminPages(
             tools.addView(DemoKit.chip(act, theme, "刷新", R.drawable.ic_refresh) { reload() })
         }
 
-                                        
+        
         fun shell() {
             host.removeAllViews()
-                                                     
+            
             val s2 = DemoKit.segmented(act, theme, listOf("用户", "卡密"), tab) { i ->
                 tab = i
                 renderList()
@@ -2092,8 +2190,8 @@ class AdminPages(
 
         val stats = LinearLayout(act).apply { gravity = Gravity.CENTER_VERTICAL }
         stats.addView(DemoKit.txt(act, theme, "卡 " + u.get("keyCount")?.takeIf { !it.isJsonNull }?.asInt.let { it ?: 0 }, 12f, false, "onSurfaceVariant"), LinearLayout.LayoutParams(0, -2, 1f))
-        stats.addView(DemoKit.txt(act, theme, "额度 " + AdminKeyFmt(u.get("totalQuota")?.takeIf { !it.isJsonNull }?.asLong ?: 0L), 12f, true))
-        stats.addView(DemoKit.txt(act, theme, "  已用 " + AdminKeyFmt(u.get("totalUsed")?.takeIf { !it.isJsonNull }?.asLong ?: 0L), 12f, false, "onSurfaceVariant"))
+        stats.addView(DemoKit.txt(act, theme, "额度 " + AdminKeyFmt(u.get("totalQuota")?.takeIf { !it.isJsonNull }?.asDouble ?: 0.0), 12f, true))
+        stats.addView(DemoKit.txt(act, theme, "  已用 " + AdminKeyFmt(u.get("totalUsed")?.takeIf { !it.isJsonNull }?.asDouble ?: 0.0), 12f, false, "onSurfaceVariant"))
         DemoKit.put(card, stats, 10)
 
         val acts = LinearLayout(act).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -2118,11 +2216,14 @@ class AdminPages(
         return card
     }
 
-    private fun AdminKeyFmt(v: Long): String = when {
+    private fun AdminKeyFmt(v: Double): String = when {
         v < 0 -> "不限"
         v >= 100_000_000 -> String.format("%.1f亿", v / 100000000.0)
         v >= 10_000 -> String.format("%.1f万", v / 10000.0)
-        else -> v.toString()
+        v == v.toLong().toDouble() -> v.toLong().toString()
+        v >= 1 -> String.format("%.2f", v).trimEnd('0').trimEnd('.')
+        v > 0 -> String.format("%.6f", v).trimEnd('0').trimEnd('.')
+        else -> "0"
     }
 
     private fun userAction(action: String, uid: String, extra: JsonObject?, onDone: () -> Unit) = io {
@@ -2135,11 +2236,11 @@ class AdminPages(
         main { UiKit.toast(act, "已完成"); onDone() }
     }
 
-       
-                                              
-                           
-                                                        
-       
+    
+
+
+
+
     private fun pushNotice(uid: String, nick: String) {
         val col = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
@@ -2184,25 +2285,25 @@ class AdminPages(
             orientation = LinearLayout.VERTICAL
             setPadding(DemoKit.dp(act, 16), DemoKit.dp(act, 8), DemoKit.dp(act, 16), 0)
         }
-        val f = field("充值 tokens（正数增加，负数扣减）", "100000", numeric = true)
+        val f = field("充值 / 扣减（正数增加，负数扣减）", "", numeric = true)
         DemoKit.put(col, f, 10)
         UiKit.customDialog(act, theme, "充值 / 扣减", col, "提交") {
-            val v = f.text.trim().toLongOrNull() ?: 0L
-            if (v == 0L) {
+            val v = f.text.trim().toDoubleOrNull() ?: 0.0
+            if (v == 0.0) {
                 UiKit.toast(act, "请输入数量"); UiKit.keepOpen(); return@customDialog
             }
             io {
-                  
-                                                         
-                   
+                
+
+
                 val keys = Api.adminGet(server, "/plugins/auth-cardkey/admin/keys").arr("keys") ?: JsonArray()
                 var done: Boolean? = false
                 for (e in keys) {
                     val k = e.asJsonObject
                     val ku = k.get("uid")?.takeIf { !it.isJsonNull }?.asString ?: ""
                     if (ku == uid) {
-                        val kq = k.get("quotaTokens")?.asLong ?: 0L
-                        if (kq == -1L) { done = null; break }
+                        val kq = k.get("quotaTokens")?.asDouble ?: 0.0
+                        if (kq == -1.0) { done = null; break }
                         Api.adminPost(server, "/plugins/auth-cardkey/admin/keys-update", JsonObject().apply {
                             addProperty("key", k.str("key"))
                             if (v > 0) addProperty("addQuota", v) else addProperty("quotaTokens", kq + v)
@@ -2262,8 +2363,8 @@ class AdminPages(
         DemoKit.put(f, DemoKit.valueRow(act, theme, "备注", u.str("note").ifEmpty { "—" }), 10)
         DemoKit.put(f, DemoKit.valueRow(act, theme, "创建", u.str("createdAt").ifEmpty { "—" }), 10)
         DemoKit.put(f, DemoKit.valueRow(act, theme, "卡数", (u.get("keyCount")?.takeIf { !it.isJsonNull }?.asInt ?: 0).toString()), 10)
-        DemoKit.put(f, DemoKit.valueRow(act, theme, "总额度", AdminKeyFmt(u.get("totalQuota")?.takeIf { !it.isJsonNull }?.asLong ?: 0L)), 10)
-        DemoKit.put(f, DemoKit.valueRow(act, theme, "已用", AdminKeyFmt(u.get("totalUsed")?.takeIf { !it.isJsonNull }?.asLong ?: 0L)), 10)
+        DemoKit.put(f, DemoKit.valueRow(act, theme, "总额度", AdminKeyFmt(u.get("totalQuota")?.takeIf { !it.isJsonNull }?.asDouble ?: 0.0)), 10)
+        DemoKit.put(f, DemoKit.valueRow(act, theme, "已用", AdminKeyFmt(u.get("totalUsed")?.takeIf { !it.isJsonNull }?.asDouble ?: 0.0)), 10)
         DemoKit.put(host, f, 14)
 
         DemoKit.put(host, DemoKit.txt(act, theme, "用户操作", 12f, true, "onSurfaceVariant"), 20)
@@ -2330,7 +2431,7 @@ class AdminPages(
         UiKit.customDialog(act, theme, "添加用户", col, "创建") {
             val username = fUser.text.trim()
             val pwd = fPwd.text
-                                                         
+            
             if (!Regex("^[A-Za-z0-9_-]{3,32}$").matches(username)) {
                 UiKit.toast(act, "用户名需 3-32 位，只能用字母、数字、下划线、短横线")
                 UiKit.keepOpen(); return@customDialog
@@ -2372,8 +2473,8 @@ class AdminPages(
         val key = k.str("key")
         val name = k.str("name").ifEmpty { "(未命名)" }
         val enable = k.bool("enable")
-        val quota = k.get("quotaTokens")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
-        val used = k.get("usedTokens")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
+        val quota = k.get("quotaTokens")?.takeIf { !it.isJsonNull }?.asDouble ?: 0.0
+        val used = k.get("usedTokens")?.takeIf { !it.isJsonNull }?.asDouble ?: 0.0
         val uid = k.str("uid")
         val card = DemoKit.panel(act, theme, 16)
         val row = LinearLayout(act).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -2384,16 +2485,16 @@ class AdminPages(
         nameRow.addView(
             DemoKit.badge(
                 act, theme,
-                                                                           
+                
                 when {
                     !enable -> "已禁用"
-                    quota == 0L -> "零额度"
-                    quota == -1L -> "不限量"
+                    quota == 0.0 -> "零额度"
+                    quota == -1.0 -> "不限量"
                     else -> "正常"
                 },
                 when {
                     !enable -> "error"
-                    quota == 0L -> "warning"
+                    quota == 0.0 -> "warning"
                     else -> "success"
                 },
             ),
@@ -2410,17 +2511,31 @@ class AdminPages(
         DemoKit.put(card, row)
 
         val quotaLine = when {
-            quota == 0L -> "零额度（不可用，需充值） · 已用 " + AdminKeyFmt(used)
-            quota == -1L -> "不限额度 · 已用 " + AdminKeyFmt(used)
+            quota == 0.0 -> "零额度（不可用，需充值） · 已用 " + AdminKeyFmt(used)
+            quota == -1.0 -> "不限额度 · 已用 " + AdminKeyFmt(used)
             else -> "额度 " + AdminKeyFmt(quota) + " · 已用 " + AdminKeyFmt(used)
         }
         val origin = k.str("expiresAt")
         DemoKit.put(card, DemoKit.txt(act, theme, quotaLine + (if (origin.isNotEmpty()) " · 到期 " + origin else ""), 12f, false, "onSurfaceVariant"), 10)
         if (quota > 0) {
-            DemoKit.put(card, DemoKit.progressRow(act, theme, "用量", used, quota, ((used * 100.0 / quota).toInt()).toString() + "%"), 12)
+            DemoKit.put(card, DemoKit.progressRow(act, theme, "用量", used.toLong(), quota.toLong(), ((used * 100.0 / quota).toInt()).toString() + "%"), 12)
         }
 
         val acts = LinearLayout(act).apply { gravity = Gravity.CENTER_VERTICAL }
+        acts.addView(DemoKit.iconButton(act, theme, R.drawable.ic_edit, "改名") {
+            val cur = k.str("name")
+            val f = MdField(act, theme, "卡名", cur)
+            val col2 = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(DemoKit.dp(act, 16), DemoKit.dp(act, 8), DemoKit.dp(act, 16), 0) }
+            DemoKit.put(col2, f, 10)
+            UiKit.customDialog(act, theme, "改名", col2, "保存") {
+                io {
+                    Api.adminPost(server, "/plugins/auth-cardkey/admin/keys-update", com.google.gson.JsonObject().apply {
+                        addProperty("key", k.str("key")); addProperty("name", f.text.trim())
+                    })
+                    main { UiKit.toast(act, "已改名"); onDone() }
+                }
+            }
+        }, LinearLayout.LayoutParams(DemoKit.dp(act, 32), DemoKit.dp(act, 32)))
         acts.addView(DemoKit.iconButton(act, theme, R.drawable.ic_edit, "编辑") { editKeyDialog(k) { onDone() } }, LinearLayout.LayoutParams(DemoKit.dp(act, 32), DemoKit.dp(act, 32)))
         acts.addView(DemoKit.iconButton(act, theme, R.drawable.ic_wallet, "充值") { rechargeDialog(k) { onDone() } }, LinearLayout.LayoutParams(DemoKit.dp(act, 32), DemoKit.dp(act, 32)).apply { marginStart = DemoKit.dp(act, 8) })
         acts.addView(View(act), LinearLayout.LayoutParams(0, 1, 1f))
@@ -2459,7 +2574,7 @@ class AdminPages(
             val quotaTxt = fQuota.text.trim()
             val body = JsonObject().apply {
                 addProperty("name", name)
-                addProperty("quotaTokens", if (quotaTxt.isEmpty()) 0L else (quotaTxt.toLongOrNull() ?: 0L))
+                addProperty("quotaTokens", if (quotaTxt.isEmpty()) 0.0 else (quotaTxt.toDoubleOrNull() ?: 0.0))
                 addProperty("expiresAt", fExp.text.trim())
                 addProperty("note", fNote.text.trim())
             }
@@ -2477,35 +2592,48 @@ class AdminPages(
         }
     }
 
+    
+
+
+
+
+
+
+
+
+
     fun editKeyDialog(k: JsonObject, onDone: () -> Unit) {
-        val col = LinearLayout(act).apply {
+        val key = k.str("key")
+        if (key.isEmpty()) { UiKit.toast(act, "卡密无效"); return }
+        val uiPath = "/admin/ui/key-edit?key=" + android.net.Uri.encode(key)
+        val container = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(DemoKit.dp(act, 16), DemoKit.dp(act, 8), DemoKit.dp(act, 16), 0)
+            setPadding(DemoKit.dp(act, 16), DemoKit.dp(act, 12), DemoKit.dp(act, 16), DemoKit.dp(act, 20))
+            setBackgroundColor(theme.color(act, "surfaceContainer"))
         }
-        val fName = field("卡名", k.str("name"))
-        val fQuota = field("额度 tokens（0 = 零额度；-1 = 不限）", (k.get("quotaTokens")?.asLong ?: 0L).toString(), numeric = true)
-        val fModels = field("模型白名单（逗号分隔，空 = 全部）", (k.arr("models") ?: JsonArray()).joinToString(",") { it.asString })
-        val fBranches = field("分支白名单（逗号分隔，空 = 全部）", (k.arr("branches") ?: JsonArray()).joinToString(",") { it.asString })
-        val fExp = field("到期日（YYYY-MM-DD，可空）", k.str("expiresAt"))
-        val fNote = field("备注", k.str("note"))
-        for (v in listOf<View>(fName, fQuota, fModels, fBranches, fExp, fNote)) DemoKit.put(col, v, 10)
-        UiKit.customDialog(act, theme, "编辑卡密", col, "保存") {
-            fun csv(s: String): JsonArray = JsonArray().apply {
-                s.split(',').map { it.trim() }.filter { it.isNotEmpty() }.forEach { add(it) }
-            }
-            io {
-                Api.adminPost(server, "/plugins/auth-cardkey/admin/keys-update", JsonObject().apply {
-                    addProperty("key", k.str("key"))
-                    addProperty("name", fName.text.trim())
-                    addProperty("quotaTokens", fQuota.text.trim().toLongOrNull() ?: 0L)
-                    add("models", csv(fModels.text))
-                    add("branches", csv(fBranches.text))
-                    addProperty("expiresAt", fExp.text.trim())
-                    addProperty("note", fNote.text.trim())
-                })
-                main { UiKit.toast(act, "已保存"); onDone() }
-            }
+        val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(act)
+        val ctl = SduiController(
+            act, act, server, "", theme,
+            admin = true,
+            adminApiScope = listOf("/admin/"),
+            inlineNav = true,
+            onClose = { sheet.dismiss() },
+            onFallback = { reason -> if (sheet.isShowing) sheet.dismiss(); UiKit.toast(act, "卡密编辑页加载失败: $reason") },
+        )
+        ctl.loadInto(container, uiPath, showTitle = false)
+        val sv = androidx.core.widget.NestedScrollView(act).apply { addView(container) }
+        sheet.setContentView(sv)
+        sheet.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        sheet.setOnShowListener {
+            sheet.behavior.state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
+            sheet.behavior.skipCollapsed = true
+            UiKit.retintTree(container, theme)
+            
+            UiKit.tintDialogWindow(sheet, theme, bottomSheet = true)
         }
+        
+        sheet.setOnDismissListener { onDone() }
+        sheet.show()
     }
 
     private fun rechargeDialog(k: JsonObject, onDone: () -> Unit) {
@@ -2513,13 +2641,13 @@ class AdminPages(
             orientation = LinearLayout.VERTICAL
             setPadding(DemoKit.dp(act, 16), DemoKit.dp(act, 8), DemoKit.dp(act, 16), 0)
         }
-        val f = field("充值 tokens（正数增加，负数扣减）", "100000", numeric = true)
+        val f = field("充值 / 扣减（正数增加，负数扣减）", "", numeric = true)
         val (row, sw) = switchRowRef("同时重置已用量", "把 usedTokens 清零", false)
         DemoKit.put(col, f, 10)
         DemoKit.put(col, row, 14)
         UiKit.customDialog(act, theme, "充值 / 扣减", col, "提交") {
-            val v = f.text.trim().toLongOrNull() ?: 0L
-            if (v == 0L) {
+            val v = f.text.trim().toDoubleOrNull() ?: 0.0
+            if (v == 0.0) {
                 UiKit.toast(act, "请输入数量"); UiKit.keepOpen(); return@customDialog
             }
             io {
@@ -2533,9 +2661,9 @@ class AdminPages(
         }
     }
 
-                                                                         
-                                                   
-                                                                            
+    
+
+
 
     fun buildNativePlugin(pluginId: String, host: LinearLayout): Boolean {
         when (pluginId) {
@@ -2552,7 +2680,7 @@ class AdminPages(
         return true
     }
 
-                                 
+    
     private fun buildAuthUserSettings(host: LinearLayout) {
         buildPluginDetail("auth-user", "用户系统", host)
     }
@@ -2622,7 +2750,7 @@ class AdminPages(
             }
         }
         reload()
-                              
+        
         val h = android.os.Handler(android.os.Looper.getMainLooper())
         auto = object : Runnable {
             override fun run() {

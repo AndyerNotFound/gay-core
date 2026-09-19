@@ -5,13 +5,18 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import com.gaycore.app.App
 import com.gaycore.app.R
 import com.gaycore.app.data.Api
+import com.gaycore.app.data.fullBase
 import com.gaycore.app.data.Bootstrap
 import com.gaycore.app.data.LayoutConfig
 import com.gaycore.app.data.ServerEntry
+import com.gaycore.app.data.HomeSlot
+import com.gaycore.app.data.Vault
+import com.gaycore.app.data.KeyStoreCrypto
 import com.gaycore.app.data.TabItem
 import com.gaycore.app.data.ThemeInfo
 import com.gaycore.app.sdui.LayoutMerger
@@ -23,17 +28,21 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-   
-                                                         
-  
-                                             
-                                                                   
-   
+
+
+
+
+
+
 class UserMainActivity : ShellActivity() {
 
     private lateinit var server: ServerEntry
+    
+    private var vaultLocked: Boolean? = null
+    private var askedVaultPassOnce = false
+    private var lastVaultErr: String? = null
     private var bootstrap: Bootstrap? = null
-                                                         
+    
     private var lastBootstrapAt = 0L
     private var lastPluginTabIds: List<String> = emptyList()
 
@@ -41,7 +50,7 @@ class UserMainActivity : ShellActivity() {
     private var currentThemeId: String? = null
     private var recents = mutableListOf<String>()
 
-                
+    
     private var modelCache: List<String>? = null
     private var modelQuery = ""
     private var modelGrid = false
@@ -59,7 +68,7 @@ class UserMainActivity : ShellActivity() {
         const val P_SETTINGS = "settings"
     }
 
-                                                        
+    
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val store = App.of(this).store
@@ -79,28 +88,64 @@ class UserMainActivity : ShellActivity() {
         }
         lastPluginTabIds = pluginTabIds(bootstrap)
         lastBootstrapAt = System.currentTimeMillis()
-                                        
+        
         reloadBootstrap()
     }
 
-                                                 
+    
     private fun pluginTabIds(b: Bootstrap?): List<String> =
         if (b == null) emptyList()
         else LayoutMerger.mergeTabs(b.layout, App.of(this).store.localLayout(server.id), b)
             .filterIsInstance<TabItem.Plugin>().map { it.id }
 
-       
-                      
-      
-                                                     
-                                               
-       
+    
+
+
+
+
+
     private fun reloadBootstrap() {
         lifecycleScope.launch(Dispatchers.IO) {
+            
+
+            val vErr = Vault.ensureUnlocked(server)
+            vaultLocked = vErr != null
+            if (vErr != null && vErr != lastVaultErr) {
+                lastVaultErr = vErr
+                withContext(Dispatchers.Main) { tip(vErr) }
+            }
+            
+
+            if (vErr != null && server.vaultPass().isNullOrBlank() && !askedVaultPassOnce) {
+                askedVaultPassOnce = true
+                withContext(Dispatchers.Main) {
+                    tip("网关已锁定；请填入网关口令（只存本机 Keystore，不落盘）")
+                    askVaultPass()
+                }
+            }
             val b = try { Api.bootstrap(server.baseUrl, server.branch) } catch (_: Exception) { null }
-            if (b != null) App.of(this@UserMainActivity).store.updateBootstrap(server.id, b)
+            
+            val me = try { Api.get(server.baseUrl + "/auth/me", Api.authHeaders(server)) } catch (_: Exception) { null }
+            if (me != null) withContext(Dispatchers.Main) {
+                
+                val prev = meInfo
+                val changed = prev == null ||
+                    jstr(prev, "nickname") != jstr(me, "nickname") ||
+                    jstr(prev, "username") != jstr(me, "username") ||
+                    jstr(prev, "avatar") != jstr(me, "avatar")
+                meInfo = me
+                if (changed) rebuildShell(false)
+            }
+            if (b != null) {
+                App.of(this@UserMainActivity).store.updateBootstrap(server.id, b)
+                
+
+
+                val curChanged = com.gaycore.app.data.Currency.update(b.serverInfo?.currencySymbol, b.serverInfo?.currencyRate)
+                if (curChanged) withContext(Dispatchers.Main) { refreshCurrentPage() }
+            }
             withContext(Dispatchers.Main) {
-                if (b == null) { refreshCurrentPage(); return@withContext }                     
+                if (b == null) { refreshCurrentPage(); return@withContext }   
                 val oldIds = lastPluginTabIds
                 bootstrap = b
                 lastBootstrapAt = System.currentTimeMillis()
@@ -108,17 +153,19 @@ class UserMainActivity : ShellActivity() {
                 val newTheme = App.of(this@UserMainActivity).store.themeId(server.id) ?: b.layout?.theme
                 if (oldIds != newIds || newTheme != currentThemeId) {
                     lastPluginTabIds = newIds
-                                                           
+                    
                     rebuildShell(false)
                 } else {
-                    refreshCurrentPage()
+                    
+
+
                 }
             }
         }
     }
 
     override fun onShellResume() {
-                                      
+        
         if (System.currentTimeMillis() - lastBootstrapAt < 30_000) return
         reloadBootstrap()
     }
@@ -137,26 +184,30 @@ class UserMainActivity : ShellActivity() {
         setContentView(pageScroll(col))
     }
 
-                                                        
+    
 
     override fun createTheme(): ThemeEngine {
         val store = App.of(this).store
         currentThemeId = store.themeId(server.id) ?: bootstrap?.layout?.theme
         val list = bootstrap?.themes ?: emptyList()
+        val dm = store.darkMode(server.id)
+        val dyn = store.dynamicColors(server.id)
+        val seed = store.customSeed(server.id)
+        
+        store.saveLastUi(currentThemeId, dm, seed, dyn)
         return ThemeEngine(
             list.firstOrNull { it.id == currentThemeId } ?: list.firstOrNull(),
-            store.darkMode(server.id),
-            store.dynamicColors(server.id),
+            dm, dyn, seed,
         )
     }
 
     override fun shellItems(): List<ShellItem> {
-                                      
+        
         val all = listOf(
             ShellItem(P_HOME, "首页", "服务点与常用入口", R.drawable.ic_home),
             ShellItem(P_MODELS, "模型", "本卡可用模型", R.drawable.ic_apps),
             ShellItem(P_PLUGINS, "插件", "服务点插件中心", R.drawable.ic_star),
-            ShellItem(P_USAGE, "使用", "额度与用量", R.drawable.ic_wallet),
+            ShellItem(P_USAGE, "使用", "请求统计与排行", R.drawable.ic_wallet),
             ShellItem(P_PERSONAL, "个人中心", "账号与卡密", R.drawable.ic_person),
             ShellItem(P_NOTICE, "公告", "服务点公告", R.drawable.ic_info),
             ShellItem(P_THEME, "主题", "外观与配色", R.drawable.ic_palette),
@@ -164,11 +215,11 @@ class UserMainActivity : ShellActivity() {
         )
         val b = bootstrap ?: return all
         val store = App.of(this).store
-                                                        
-                                                      
-                                                   
-                                                             
-                                               
+        
+
+
+        
+
         val tabs = LayoutMerger.mergeTabs(b.layout, null, b)
         if (tabs.isEmpty()) return all
         val byId = all.associateBy { it.id }
@@ -184,11 +235,11 @@ class UserMainActivity : ShellActivity() {
         return out.ifEmpty { all }
     }
 
-       
-                      
-                                                 
-                                             
-       
+    
+
+
+
+
     private fun modelPageId(): String =
         shellItems().firstOrNull { it.id == "plugin:model-square" }?.id ?: P_MODELS
 
@@ -208,24 +259,51 @@ class UserMainActivity : ShellActivity() {
     override fun onRefresh(id: String) {
         if (id == P_MODELS) modelCache = null
         controllers.clear()
-                                                       
+        
+
+
+
+        refreshCurrentPage()
+        tip("已刷新")
+        
         reloadBootstrap()
     }
 
-    override fun fabFor(id: String): FabSpec? =
-        if (id == P_HOME) FabSpec(R.drawable.ic_edit, "编辑首页布局") { openHomeLayoutEditor() } else null
-
-    override fun topActionFor(id: String): TopAction = when (id) {
-        P_HOME -> TopAction(R.drawable.ic_edit, "编辑首页布局") { openHomeLayoutEditor() }
-        else -> TopAction(R.drawable.ic_refresh, "刷新") { onRefresh(id) }
+    
+    private fun inlineController(): SduiController? = when {
+        currentPageId == P_PERSONAL -> controllers["personal"]
+        currentPageId.startsWith("plugin:") -> controllers["tab:" + currentPageId.removePrefix("plugin:")]
+        else -> null
     }
 
+    override fun inlineBackAvailable(): Boolean = inlineController()?.canGoBack() == true
+
+    override fun onInlineBack(): Boolean = inlineController()?.back() ?: false
+
+    override fun fabFor(id: String): FabSpec? =
+        if (id == P_HOME) FabSpec(R.drawable.ic_edit, "编辑首页布局") { toggleUserHomeEdit() } else null
+
+    
+
+    override fun topActionOrNull(id: String): TopAction? =
+        if (id == P_HOME) null else topActionFor(id)
+
+    
+    private var meInfo: com.google.gson.JsonObject? = null
+
+    private fun jstr(o: com.google.gson.JsonObject?, k: String): String =
+        o?.get(k)?.takeIf { !it.isJsonNull }?.asString ?: ""
+
     override fun identity(): Identity? {
-        val si = bootstrap?.serverInfo
-        val name = si?.name?.takeIf { it.isNotBlank() } ?: server.name.ifEmpty { server.baseUrl }
-        val sub = server.baseUrl + (if (server.branch != "default" && server.branch.isNotEmpty()) " / " + server.branch else "")
-        val tag = if (server.uid.isNotEmpty()) "UID: " + server.uid else "已登录"
-        return Identity(name.take(1).uppercase(), name, sub, tag)
+        val me = meInfo
+        val nick = jstr(me, "nickname")
+        val uname = jstr(me, "username")
+        val uid = jstr(me, "uid").ifEmpty { server.uid }
+        val avatar = jstr(me, "avatar")
+        val title = nick.ifEmpty { uname }.ifEmpty { "我的账号" }
+        val sub = if (uname.isNotEmpty() && uname != title) "用户名 " + uname else server.name.ifEmpty { "个人中心" }
+        val tag = if (uid.isNotEmpty()) "UID: " + uid else ""
+        return Identity(title.take(1).uppercase(), title, sub, tag, avatar)
     }
 
     override fun recents(): MutableList<String> = recents
@@ -234,7 +312,7 @@ class UserMainActivity : ShellActivity() {
         val store = App.of(this).store
         val cur = store.darkMode(server.id)
         store.saveDarkMode(server.id, if (cur == "dark") "light" else "dark")
-                                      
+        
         rebuildShell(true)
     }
 
@@ -245,11 +323,14 @@ class UserMainActivity : ShellActivity() {
     private var childIsPlugin = false
 
     override fun onShellRebuilt() {
-                                                            
+        
         controllers.clear()
     }
 
-    override fun onChildOpened() {
+    
+
+
+    override fun onChildOpening() {
         childIsPlugin = false
         controllers.remove("child")
     }
@@ -259,6 +340,9 @@ class UserMainActivity : ShellActivity() {
         val ctl = controllers["child"] ?: return false
         return ctl.back()
     }
+
+    
+    override fun onBackExtra(): Boolean = onInlineBack()
 
     override fun banner(): View? {
         val ud = bootstrap?.userDebug ?: return null
@@ -270,7 +354,7 @@ class UserMainActivity : ShellActivity() {
         }
     }
 
-                                                      
+    
 
     private fun apiBase(): String {
         val pfx = if (server.branch == "default" || server.branch.isEmpty()) "" else "/" + server.branch
@@ -286,7 +370,7 @@ class UserMainActivity : ShellActivity() {
         tip(getString(R.string.copied))
     }
 
-                         
+    
     private fun <T> fill(box: LinearLayout, fetch: () -> T, render: (LinearLayout, T) -> Unit) {
         box.removeAllViews()
         DemoKit.put(box, DemoKit.txt(this, theme, "读取中…", 13f, false, "onSurfaceVariant"))
@@ -306,73 +390,153 @@ class UserMainActivity : ShellActivity() {
         }
     }
 
-                                                      
+    
 
-    private fun homePage(): View {
-        val col = DemoKit.pageColumn(this, theme)
-        DemoKit.put(col, serverCard(), 2)
 
-        val metricBox = DemoKit.box(this)
-        DemoKit.put(col, metricBox, 18)
-        fill(metricBox, { Api.get(server.baseUrl + "/credits", Api.authHeaders(server)) }) { host, r ->
-            val unlimited = r.get("unlimited")?.takeIf { !it.isJsonNull }?.asBoolean ?: false
-            val quota = r.str("quotaTokens")
-            val used = r.str("usedTokens")
-            val remain = if (unlimited) "∞" else r.str("remainingTokens")
-            DemoKit.put(host, DemoKit.sectionTitle(this, theme, "额度概览", "来自服务端 /credits"))
-            DemoKit.put(
-                host,
-                DemoKit.metricRow(
-                    this,
-                    DemoKit.metricTile(this, theme, fmt(quota), "总额度", "◈") { showPage(P_USAGE) },
-                    DemoKit.metricTile(this, theme, fmt(used), "已用", "↻") { showPage(P_USAGE) },
-                    DemoKit.metricTile(this, theme, fmt(remain), "剩余", "◷") { showPage(P_USAGE) },
-                ),
-                10,
-            )
-        }
 
-                  
-        DemoKit.put(col, DemoKit.sectionTitle(this, theme, "快速入口", "常用操作"), 20)
-        val quick = LinearLayout(this).apply { gravity = Gravity.CENTER }
-        quick.addView(DemoKit.actionTile(this, theme, "模型广场", R.drawable.ic_apps) { showPage(modelPageId()) }, LinearLayout.LayoutParams(0, dp(88), 1f))
-        quick.addView(DemoKit.actionTile(this, theme, "插件中心", R.drawable.ic_star) { showPage(P_PLUGINS) }, LinearLayout.LayoutParams(0, dp(88), 1f).apply { marginStart = dp(8) })
-        quick.addView(DemoKit.actionTile(this, theme, "个人中心", R.drawable.ic_person) { showPage(P_PERSONAL) }, LinearLayout.LayoutParams(0, dp(88), 1f).apply { marginStart = dp(8) })
-        DemoKit.put(col, quick, 10)
 
-                              
+
+    private var homeBoard: HomeBoard? = null
+
+    
+    private val homeDecoPick = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        homeBoard?.onDecoImagePicked(uri)
+    }
+
+    
+    private fun homeTap(a: () -> Unit): () -> Unit = {
+        if (homeBoard?.editMode != true) a()
+    }
+
+    private fun JsonObject.jbool(k: String): Boolean = get(k)?.takeIf { !it.isJsonNull }?.asBoolean ?: false
+
+    
+    private fun userHomeDefaultHidden(): Set<String> =
+        (bootstrap?.allWidgets() ?: emptyList()).map { "widget:" + it.first + ":" + it.second.id }.toSet()
+
+    private fun userHomeCards(credits: JsonObject?): LinkedHashMap<String, HomeCardDef> {
+        val defs = LinkedHashMap<String, HomeCardDef>()
         val b = bootstrap
+
+        defs["native:server"] =
+            HomeCardDef("native:server", "服务点卡片", "原生", 5, 1, { true }) { serverCard() }
+
+        
+        fun quotaCard(id: String, label: String, glyph: String, pick: (JsonObject) -> String) {
+            defs[id] = HomeCardDef(id, label, "原生", 2, 1, { credits != null }) { _ ->
+                val c = credits
+                val v = if (c == null) {
+                    DemoKit.metricTile(this, theme, "—", label, glyph, null)
+                } else {
+                    DemoKit.metricTile(this, theme, pick(c), label, glyph, homeTap { showPage(P_USAGE) })
+                }
+                v.minimumHeight = dp(104)
+                v
+            }
+        }
+        quotaCard("native:m-quota", "总额度", "◈") { r -> if (r.jbool("unlimited")) "∞" else fmt(r.str("quotaTokens")) }
+        quotaCard("native:m-used", "已用", "↻") { r -> fmt(r.str("usedTokens")) }
+        quotaCard("native:m-remain", "剩余", "◷") { r -> if (r.jbool("unlimited")) "∞" else fmt(r.str("remainingTokens")) }
+
+        
+        defs["native:credits-err"] =
+            HomeCardDef("native:credits-err", "额度读取失败", "原生", 5, 1, { credits == null }) { _ ->
+                val card = DemoKit.panel(this, theme, 16)
+                DemoKit.put(
+                    card,
+                    DemoKit.txt(this, theme, "额度读取失败：卡密可能已失效，或服务点未启用卡密插件。", 12.5f, false, "onSurfaceVariant"),
+                )
+                card
+            }
+
+        
+        fun quick(id: String, label: String, icon: Int, act: () -> Unit) {
+            defs[id] = HomeCardDef(id, "快捷·" + label, "原生", 2, 1, { true }) { _ ->
+                val v = DemoKit.actionTile(this, theme, label, icon, null, homeTap(act))
+                v.minimumHeight = dp(84)
+                v
+            }
+        }
+        quick("native:q-models", "模型广场", R.drawable.ic_apps) { showPage(modelPageId()) }
+        quick("native:q-usage", "使用", R.drawable.ic_wallet) { showPage(P_USAGE) }
+        quick("native:q-personal", "个人中心", R.drawable.ic_person) { showPage(P_PERSONAL) }
+        quick("native:q-plugins", "插件中心", R.drawable.ic_star) { showPage(P_PLUGINS) }
+
+        
         if (b != null) {
-            val order = LayoutMerger.mergeHomeOrder(b.layout, App.of(this).store.localLayout(server.id), b)
+            val store = App.of(this).store
+            val order = LayoutMerger.mergeHomeOrder(b.layout, store.localLayout(server.id), b)
             for (pid in order) {
                 val p = b.pluginById(pid) ?: continue
                 val home = p.appUi?.home ?: continue
-                DemoKit.put(col, DemoKit.sectionTitle(this, theme, home.title.ifEmpty { p.name }, "来自插件 " + p.id), 20)
-                val card = DemoKit.panel(this, theme, 16)
-                val ctl = controllers.getOrPut("home:" + pid) {
-                    SduiController(this, this, server, pid, theme, onOpenOverlay = { p2, path, t -> openPluginChild(p2, path, t) })
+                val key = "home:" + pid
+                defs[key] = HomeCardDef(key, home.title.ifEmpty { p.name }, "插件 " + p.id, 5, 1, { true }) { _ ->
+                    val card = DemoKit.panel(this, theme, 16)
+                    val ctl = controllers.getOrPut(key) {
+                        SduiController(this, this, server, pid, theme, onOpenOverlay = { p2, path, t -> openPluginChild(p2, path, t) })
+                    }
+                    ctl.loadInto(card, home.ui)
+                    card
                 }
-                ctl.loadInto(card, home.ui)
-                DemoKit.put(col, card, 10)
+            }
+            for ((pidp, w) in b.allWidgets()) {
+                val key = "widget:" + pidp + ":" + w.id
+                val c = if (w.cols in 1..6) 2 else 5
+                defs[key] = HomeCardDef(key, w.title.ifEmpty { w.id }, "插件 " + pidp, c, 1, { true }) { _ ->
+                    val card = DemoKit.panel(this, theme, 16)
+                    val ctl = controllers.getOrPut(key) {
+                        SduiController(this, this, server, pidp, theme, onOpenOverlay = { p2, path, t -> openPluginChild(p2, path, t) })
+                    }
+                    ctl.loadInto(card, w.ui)
+                    card
+                }
             }
         }
 
-                
-        val notices = myNotices()
-        if (notices.isNotEmpty()) {
-            val latest = notices.last()
-            DemoKit.put(col, DemoKit.sectionTitle(this, theme, "公告", "共 " + notices.size + " 条 · 点卡片看全部"), 20)
-            val card = DemoKit.panel(this, theme, 16, ripple = true).apply { setOnClickListener { showPage(P_NOTICE) } }
-            val meta = ArrayList<String>()
-            if (latest.time.isNotEmpty()) meta.add(latest.time)
-            if (latest.target.isNotEmpty()) meta.add("发给你的通知")
-            if (meta.isNotEmpty()) DemoKit.put(card, DemoKit.txt(this, theme, meta.joinToString("  ·  "), 10.5f, true, if (latest.target.isNotEmpty()) "primary" else "onSurfaceVariant"))
-            DemoKit.put(card, DemoKit.txt(this, theme, latest.body, 13f, false, "onSurface"), if (meta.isEmpty()) 0 else 7)
-            DemoKit.put(col, card, 10)
+        
+        defs["native:notice"] =
+            HomeCardDef("native:notice", "公告", "原生", 5, 2, { myNotices().isNotEmpty() }) { _ ->
+                val list = myNotices()
+                val latest = list.last()
+                val card = DemoKit.panel(this, theme, 16, ripple = true)
+                card.setOnClickListener { if (homeBoard?.editMode != true) showPage(P_NOTICE) }
+                DemoKit.put(card, DemoKit.txt(this, theme, "公告 · 共 " + list.size + " 条", 10.5f, true, "onSurfaceVariant"))
+                DemoKit.put(card, DemoKit.txt(this, theme, latest.body, 13f, false, "onSurface"), 7)
+                card
+            }
+
+        return defs
+    }
+
+    private fun homePage(): View {
+        val col = DemoKit.pageColumn(this, theme)
+        val box = DemoKit.box(this)
+        DemoKit.put(col, box, 2)
+        fill(box, {
+            try { Api.get(server.baseUrl + "/credits", Api.authHeaders(server)) } catch (_: Exception) { null }
+        }) { _, credits ->
+            val defs = userHomeCards(credits)
+            val store = App.of(this).store
+            val saved = store.homeLayoutV3(server.id)
+            val decos = HashMap<String, com.gaycore.app.data.DecoCard>()
+            saved?.decos?.let { decos.putAll(it) }
+            val board = HomeBoard(
+                this, theme, defs,
+                HomeBoard.mergeItems(defs.values.toList(), saved?.items, decos),
+                (saved?.hidden ?: userHomeDefaultHidden().toList()).toMutableSet(),
+                decos,
+                { userHomeDefaultHidden() },
+                { homeDecoPick.launch("image/*") },
+                { o, h, d -> store.saveHomeLayoutV3(server.id, o, h.toList(), d) },
+                { msg -> tip(msg) },
+            )
+            board.onListEditor = { openUserHomeList() }
+            homeBoard = board
+            DemoKit.put(box, board.host, 0)
+            board.render()
         }
         return pageScroll(col)
     }
-
     private fun serverCard(): View {
         val card = DemoKit.gradientPanel(this, theme, 16)
         val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -390,7 +554,7 @@ class UserMainActivity : ShellActivity() {
         return card
     }
 
-                                                        
+    
 
     private fun modelsPage(): View {
         val col = DemoKit.pageColumn(this, theme)
@@ -482,7 +646,7 @@ class UserMainActivity : ShellActivity() {
         }
     }
 
-                                                        
+    
 
     private fun pluginsPage(): View {
         val col = DemoKit.pageColumn(this, theme)
@@ -562,8 +726,9 @@ class UserMainActivity : ShellActivity() {
         val col = DemoKit.pageColumn(this, theme)
         val card = DemoKit.panel(this, theme, 16)
         val ctl = controllers.getOrPut("tab:" + pid) {
-            SduiController(this, this, server, pid, theme, onOpenOverlay = { p2, path, t -> openPluginChild(p2, path, t) })
+            SduiController(this, this, server, pid, theme, inlineNav = true, onOpenOverlay = { p2, path, t -> openPluginChild(p2, path, t) }, onNavChanged = { refreshTopBar() })
         }
+        ctl.resetNav()
         ctl.loadInto(card, bb.ui)
         DemoKit.put(col, card)
         return pageScroll(col)
@@ -581,7 +746,7 @@ class UserMainActivity : ShellActivity() {
     private fun openPluginChild(pid: String, uiPath: String, title: String) {
         openChild(title) { host ->
             val card = DemoKit.panel(this, theme, 16)
-            val ctl = SduiController(this, this, server, pid, theme)
+            val ctl = SduiController(this, this, server, pid, theme, inlineNav = true, onNavChanged = { refreshTopBar() })
             controllers["child"] = ctl
             childIsPlugin = true
             ctl.loadInto(card, uiPath)
@@ -589,68 +754,23 @@ class UserMainActivity : ShellActivity() {
         }
     }
 
-                                                      
+    
 
     private fun usagePage(): View {
+        
+
         val col = DemoKit.pageColumn(this, theme)
-        val box = DemoKit.box(this)
-        DemoKit.put(col, box, 2)
-        fill(box, { Api.get(server.baseUrl + "/credits", Api.authHeaders(server)) }) { host, r ->
-            val unlimited = r.get("unlimited")?.takeIf { !it.isJsonNull }?.asBoolean ?: false
-            val quota = r.get("quotaTokens")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
-            val used = r.get("usedTokens")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
-            val remain = r.get("remainingTokens")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
-            val name = r.str("name").ifEmpty { "—" }
-            val uid = r.str("uid")
-            DemoKit.put(host, DemoKit.sectionTitle(this, theme, "使用情况", (if (uid.isNotEmpty()) "UID " + uid + " · " else "") + name))
-            DemoKit.put(
-                host,
-                DemoKit.metricRow(
-                    this,
-                    DemoKit.metricTile(this, theme, if (unlimited) "∞" else fmtTok(quota), "总额度", "◈"),
-                    DemoKit.metricTile(this, theme, fmtTok(used), "已用 tokens", "↻"),
-                    DemoKit.metricTile(this, theme, if (unlimited) "∞" else fmtTok(remain), "剩余", "◷"),
-                ),
-                12,
-            )
-            val card = DemoKit.panel(this, theme, 16)
-            DemoKit.put(card, DemoKit.txt(this, theme, "额度进度", 16f, true))
-            if (unlimited) {
-                DemoKit.put(card, DemoKit.txt(this, theme, "该卡为不限额度，仅统计用量。", 12.5f, false, "onSurfaceVariant"), 6)
-                DemoKit.put(card, DemoKit.progressRow(this, theme, "已用", used, (used * 2).coerceAtLeast(1), fmtTok(used)), 14)
-            } else if (quota <= 0) {
-                DemoKit.put(card, DemoKit.txt(this, theme, "当前卡密为零额度，无法发起请求，请联系管理员充值。", 12.5f, false, "error"), 6)
-            } else {
-                val pct = (used.toDouble() / quota.toDouble() * 100).roundToInt()
-                DemoKit.put(card, DemoKit.progressRow(this, theme, "已用 / 总额度", used, quota, pct.toString() + "%"), 14)
-            }
-            DemoKit.put(host, card, 12)
-
-            val info = DemoKit.panel(this, theme, 16)
-            DemoKit.put(info, DemoKit.txt(this, theme, "账号信息", 16f, true))
-            DemoKit.put(info, DemoKit.valueRow(this, theme, "到期", r.str("expiresAt").ifEmpty { "长期有效" }), 12)
-            DemoKit.put(info, DemoKit.valueRow(this, theme, "卡名", name), 10)
-            DemoKit.put(host, info, 12)
-
-            val models = r.arr("models")
-            if (models != null && models.size() > 0) {
-                DemoKit.put(host, DemoKit.sectionTitle(this, theme, "允许模型", "共 " + models.size() + " 个"), 20)
-                val card2 = DemoKit.panel(this, theme, 16)
-                val chips = (0 until models.size()).mapNotNull { i ->
-                    models.get(i)?.takeIf { !it.isJsonNull }?.asString?.let { m ->
-                        DemoKit.chip(this, theme, m, null, false) { copyIt("model", m) }
-                    }
-                }
-                DemoKit.put(card2, DemoKit.chipWrap(chips))
-                DemoKit.put(host, card2, 10)
-            } else {
-                DemoKit.put(host, DemoKit.sectionTitle(this, theme, "允许模型", "该卡可用全部模型"), 20)
-            }
+        val card = DemoKit.box(this)
+        DemoKit.put(col, card, 2)
+        val ctl = controllers.getOrPut("usage") {
+            SduiController(this, this, server, "", theme, inlineNav = true, onNavChanged = { refreshTopBar() })
         }
+        ctl.resetNav()
+        ctl.loadInto(card, "/ui/usage")
         return pageScroll(col)
     }
 
-                                                        
+    
 
     private fun personalPage(): View {
         val col = DemoKit.pageColumn(this, theme)
@@ -663,16 +783,17 @@ class UserMainActivity : ShellActivity() {
         }
         val card = DemoKit.panel(this, theme, 16)
         val ctl = controllers.getOrPut("personal") {
-            SduiController(this, this, server, usp.id, theme, inlineNav = true)
+            SduiController(this, this, server, usp.id, theme, inlineNav = true, onNavChanged = { refreshTopBar() })
         }
+        ctl.resetNav()
         ctl.loadInto(card, usp.appUi!!.personal!!.ui)
         DemoKit.put(col, card, 2)
         return pageScroll(col)
     }
 
-                                                      
+    
 
-                                           
+    
     private fun myNotices(): List<Notices.Item> =
         Notices.visibleTo(Notices.parse(bootstrap?.serverInfo?.announcement), server.uid)
 
@@ -722,7 +843,7 @@ class UserMainActivity : ShellActivity() {
         return pageScroll(col)
     }
 
-                                                      
+    
 
     private fun themePage(): View {
         val store = App.of(this).store
@@ -759,6 +880,12 @@ class UserMainActivity : ShellActivity() {
                 if (t.id == curId) row.addView(DemoKit.badge(this, theme, "使用中", "success"))
                 else if (t.locked) row.addView(DemoKit.badge(this, theme, "默认", "neutral"))
                 DemoKit.put(card, row)
+                
+                DemoKit.put(
+                    card,
+                    DemoKit.chip(this, theme, "调参数", R.drawable.ic_tune) { userThemeParamsDialog(t) },
+                    8,
+                )
                 DemoKit.put(cardHost, card, 8)
             }
             DemoKit.put(col, cardHost)
@@ -769,23 +896,62 @@ class UserMainActivity : ShellActivity() {
             val card = DemoKit.panel(this, theme, 16)
             DemoKit.put(
                 card,
-                DemoKit.switchRow(this, theme, "从壁纸取色", "自动提取壁纸主色调，覆盖主题配色", store.dynamicColors(server.id)) { on ->
+                DemoKit.switchRow(this, theme, "从壁纸取色", "自动提取壁纸主色调（与下面的自定义主色二选一）", store.dynamicColors(server.id)) { on ->
                     store.saveDynamicColors(server.id, on)
+                    
+                    if (on) store.clearCustomSeed(server.id)
                     rebuildShell(true)
                 },
             )
             DemoKit.put(col, card, 10)
         }
 
-                        
-        val themePlugins = (bootstrap?.plugins ?: emptyList()).filter { it.type == "theme" }
-        if (themePlugins.isNotEmpty()) {
+        
+        val curSeed = store.customSeed(server.id)
+        val myOn = store.dynamicColors(server.id)
+        DemoKit.put(
+            col,
+            DemoKit.sectionTitle(
+                this, theme, "自定义主色",
+                if (myOn) "当前由 Material You 生效 —— 选任意颜色会关闭它" 
+                else if (curSeed != null) "正在使用自定义主色（点「跟随主题」可恢复）"
+                else "选一个颜色自动生成整套配色",
+            ),
+            20,
+        )
+        val seedCard = DemoKit.panel(this, theme, 16)
+        DemoKit.put(
+            seedCard,
+            DemoKit.seedPalette(this, theme, curSeed) { seed ->
+                if (seed == null) {
+                    store.clearCustomSeed(server.id)
+                } else {
+                    store.saveCustomSeed(server.id, seed)
+                    
+                    store.saveDynamicColors(server.id, false)
+                }
+                rebuildShell(true)
+            },
+        )
+        DemoKit.put(col, seedCard, 10)
+
+        
+        val themePlugins = (bootstrap?.plugins ?: emptyList()).filter { it.type == "theme" && it.appUi?.settings != null }
+        val adminOnlyThemes = (bootstrap?.plugins ?: emptyList()).filter { it.type == "theme" && it.appUi?.settings == null }
+        if (themePlugins.isNotEmpty() || adminOnlyThemes.isNotEmpty()) {
             DemoKit.put(col, DemoKit.sectionTitle(this, theme, "主题插件", "由插件提供更多外观"), 20)
             for (p in themePlugins) {
                 val card = DemoKit.menuCard(this, theme, p.name, p.description.ifBlank { "打开主题设置" }, DemoKit.iconRes(p.icon)) {
                     openThemePlugin(p)
                 }
                 DemoKit.put(col, card, 8)
+            }
+            if (adminOnlyThemes.isNotEmpty()) {
+                val names = adminOnlyThemes.joinToString("、") { it.name }
+                val infoCard = DemoKit.panel(this, theme, 16)
+                DemoKit.put(infoCard, DemoKit.txt(this, theme, names, 13.5f, true))
+                DemoKit.put(infoCard, DemoKit.txt(this, theme, "卡片风格 / 圆角 / 描边 / 配色方案等由管理员在「管理端 → 插件」里配置, 配好后在此选择主题即可生效。", 12f, false, "onSurfaceVariant"), 6)
+                DemoKit.put(col, infoCard, 8)
             }
         }
         return pageScroll(col)
@@ -800,7 +966,7 @@ class UserMainActivity : ShellActivity() {
         openPluginChild(p.id, ui, p.name)
     }
 
-                                                      
+    
 
     private fun settingsPage(): View {
         val col = DemoKit.pageColumn(this, theme)
@@ -810,8 +976,10 @@ class UserMainActivity : ShellActivity() {
         val rows = listOf(
             DemoKit.settingsRow(this, theme, R.drawable.ic_person, "个人资料", "昵称 / 头像 / 卡密 / 改密码") { openChild("个人资料") { buildProfilePage(it) } },
             DemoKit.settingsRow(this, theme, R.drawable.ic_info, "站点信息", "地址 / 联系方式" + if ((b?.branches?.size ?: 0) > 1) " / 切换分支" else "") { openChild("站点信息") { buildSitePage(it) } },
+            
+            DemoKit.settingsRow(this, theme, R.drawable.ic_key, "网关口令", vaultPassDesc()) { askVaultPass() },
             DemoKit.settingsRow(this, theme, R.drawable.ic_star, "插件管理", "共 " + (b?.plugins?.size ?: 0) + " 个插件") { openChild("插件管理") { buildPluginManagePage(it) } },
-            DemoKit.settingsRow(this, theme, R.drawable.ic_edit, "首页组件布局", "调整首页插件的顺序与显隐") { openChild("首页组件布局") { buildWidgetLayoutPage(it) } },
+            DemoKit.settingsRow(this, theme, R.drawable.ic_edit, "首页组件布局", "调整首页区块(原生 + 插件)的顺序与显隐") { openChild("首页组件布局") { buildWidgetLayoutPage(it) } },
             DemoKit.settingsRow(this, theme, R.drawable.ic_bug, "漏洞报告", "生成诊断信息并反馈") { openChild("漏洞报告") { buildReportPage(it) } },
             DemoKit.settingsRow(this, theme, R.drawable.ic_settings, "关于", "版本 / 构建信息") { openChild("关于") { buildAboutPage(it) } },
             DemoKit.settingsRow(this, theme, R.drawable.ic_block, "免责声明", "使用须知与风险提示", danger = true) { openChild("免责声明") { buildDisclaimerPage(it) } },
@@ -835,7 +1003,7 @@ class UserMainActivity : ShellActivity() {
         return pageScroll(col)
     }
 
-                                                   
+    
     private fun buildProfilePage(host: LinearLayout) {
         ProfilePage.build(
             this, theme, server, host, asAdmin = false,
@@ -860,7 +1028,9 @@ class UserMainActivity : ShellActivity() {
         DemoKit.put(card, DemoKit.valueRow(this, theme, "地址", server.baseUrl), 12)
         DemoKit.put(card, DemoKit.valueRow(this, theme, "分支", server.branch), 10)
         DemoKit.put(card, DemoKit.valueRow(this, theme, "核心", bootstrap?.core ?: "—"), 10)
-                                                  
+        
+
+        try {
         val b0 = bootstrap
         val ptabs = if (b0 == null) emptyList() else LayoutMerger.mergeTabs(b0.layout, App.of(this).store.localLayout(server.id), b0)
             .filterIsInstance<TabItem.Plugin>()
@@ -874,6 +1044,25 @@ class UserMainActivity : ShellActivity() {
             DemoKit.put(
                 card,
                 DemoKit.txt(this, theme, "服务端说有插件页，但当前布局里没排上 —— 点右上角刷新重新同步一次。", 11.5f, false, "warning"),
+                8,
+            )
+        }
+        
+        DemoKit.put(
+            card,
+            DemoKit.settingsRow(
+                this, theme, R.drawable.ic_key, "网关口令",
+                vaultPassDesc(),
+            ) { askVaultPass() },
+            10,
+        )
+        } catch (e: Throwable) {
+            DemoKit.put(card, DemoKit.txt(this, theme, "插件信息读取失败: " + (e.message ?: e.javaClass.simpleName), 11.5f, false, "warning"), 8)
+        }
+        if (vaultLocked == true) {
+            DemoKit.put(
+                card,
+                DemoKit.txt(this, theme, "⚠️ 网关当前「已锁定」：/v1 请求会被 503 拒绝。填上网关口令即可自动解锁。", 11.5f, false, "error"),
                 8,
             )
         }
@@ -897,6 +1086,45 @@ class UserMainActivity : ShellActivity() {
             }
             DemoKit.put(card2, DemoKit.chipWrap(chips), 12)
             DemoKit.put(host, card2, 14)
+        }
+    }
+
+    
+    private fun vaultPassDesc(): String {
+        val has = server.vaultPass()?.isNotEmpty() == true
+        return when {
+            has && vaultLocked == true -> "已保存 · 网关当前锁定（点这里重填，会自动解锁）"
+            has -> "已保存（网关重启后自动解锁）"
+            vaultLocked == true -> "⚠️ 未设置 · 网关已锁定：转发会被 503 拒绝，点这里填写"
+            else -> "未设置 · 网关锁定后转发会被拒绝"
+        }
+    }
+
+    
+    private fun askVaultPass() {
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val et = MdField(this, theme, "网关口令（至少 8 位）", "")
+        et.edit.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        DemoKit.put(col, et)
+        DemoKit.put(
+            col,
+            DemoKit.txt(this, theme, "口令只用来解锁网关（服务端不落盘；这里存 Keystore 加密区）。留空保存 = 清除。", 11.5f, false, "onSurfaceVariant"),
+            8,
+        )
+        UiKit.customDialog(this, theme, "网关口令", col, "保存") {
+            val v = et.text.trim()
+            App.of(this).store.get(server.id)?.let { e ->
+                e.vaultPassEnc = if (v.isEmpty()) null else KeyStoreCrypto.encrypt(v)
+                App.of(this).store.save(e)
+                server = e
+            }
+            tip(if (v.isEmpty()) "已清除网关口令" else "已保存，正在尝试解锁…")
+            lifecycleScope.launch {
+                val err = if (v.isEmpty()) Vault.ensureUnlocked(server) else Vault.unlockWith(server, v)
+                vaultLocked = err != null
+                lastVaultErr = err
+                withContext(Dispatchers.Main) { tip(err ?: "网关已解锁 ✓") }
+            }
         }
     }
 
@@ -930,90 +1158,108 @@ class UserMainActivity : ShellActivity() {
         }
     }
 
+    
+    private fun toggleUserHomeEdit() {
+        val b = homeBoard
+        if (b == null) {
+            openUserHomeList()
+            return
+        }
+        b.toggleEdit()
+        if (b.editMode) tip("拖动卡片自由摆放 · 点「半宽/整宽」改宽度 · ✕ 隐藏")
+    }
+
+    
+    private fun openUserHomeList() {
+        val b = homeBoard
+        if (b == null) {
+            tip("先回首页加载一次数据")
+            return
+        }
+        openChild("首页布局（列表方式）") { host ->
+            DemoKit.put(host, b.listEditorView {
+                closeChild()
+                tip("已保存，首页布局已更新")
+            }, 2)
+        }
+    }
+
+    
     private fun buildWidgetLayoutPage(host: LinearLayout) {
-        val b = bootstrap ?: return
-        val widgets = b.allWidgets()
-        if (widgets.isEmpty()) {
+        val b = homeBoard
+        if (b == null) {
             val card = DemoKit.panel(this, theme, 16)
-            DemoKit.put(card, DemoKit.txt(this, theme, "该服务点的插件没有声明首页组件。", 13f, false, "onSurfaceVariant"))
+            DemoKit.put(card, DemoKit.txt(this, theme, "先回首页加载一次数据，再来调布局。", 13f, false, "onSurfaceVariant"))
             DemoKit.put(host, card, 2)
             return
         }
-        val store = App.of(this).store
-        val allIds = widgets.map { it.first + ":" + it.second.id }
-        val hidden = store.widgetHidden(server.id).toMutableList()
-        val order = ((store.widgetOrder(server.id)?.filter { it in allIds } ?: emptyList()) + allIds.filter { it !in (store.widgetOrder(server.id) ?: emptyList()) }).toMutableList()
+        DemoKit.put(host, b.listEditorView {
+            closeChild()
+            tip("已保存，首页布局已更新")
+        }, 2)
+    }
+    
 
-        fun titleOf(id: String): String {
-            val w = widgets.firstOrNull { it.first + ":" + it.second.id == id } ?: return id
-            return w.second.title.ifEmpty { w.second.id }
-        }
 
-        val card = DemoKit.panel(this, theme, 16)
-        DemoKit.put(card, DemoKit.txt(this, theme, "调整顺序与显隐", 16f, true))
-        DemoKit.put(card, DemoKit.txt(this, theme, "用 ▲ ▼ 调序，右侧开关控制显示。保存后首页立即生效。", 12f, false, "onSurfaceVariant"), 6)
-        val rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        DemoKit.put(card, rows, 12)
 
-        lateinit var rebuild: () -> Unit
-        rebuild = {
-            rows.removeAllViews()
-            order.forEachIndexed { idx, id ->
-                val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-                val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-                DemoKit.put(info, DemoKit.txt(this, theme, titleOf(id), 13.5f, true))
-                DemoKit.put(info, DemoKit.txt(this, theme, if (id in hidden) "已隐藏" else "显示中", 11f, false, "onSurfaceVariant"), 2)
-                row.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                val up = DemoKit.iconButton(this, theme, R.drawable.ic_chevron_up, "上移") {
-                    if (idx > 0) {
-                        val it0 = order.removeAt(idx)
-                        order.add(idx - 1, it0)
-                        rebuild()
+    private fun userThemeParamsDialog(t: ThemeInfo) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val r = try { Api.get(server.baseUrl + "/theme-config", Api.authHeaders(server)) } catch (_: Exception) { null }
+            val item = r?.getAsJsonArray("themes")?.firstOrNull {
+                it.isJsonObject && it.asJsonObject.get("id")?.takeIf { x -> !x.isJsonNull }?.asString == t.id
+            }?.asJsonObject
+            withContext(Dispatchers.Main) {
+                if (item == null) { UiKit.toast(this@UserMainActivity, "「${t.name}」没有可调参数"); return@withContext }
+                val schema = item.getAsJsonArray("schema") ?: return@withContext
+                val cfg = item.getAsJsonObject("config") ?: JsonObject()
+                val col = LinearLayout(this@UserMainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(16), dp(8), dp(16), 0)
+                }
+                val edits = LinkedHashMap<String, MdField>()
+                val checks = LinkedHashMap<String, com.google.android.material.materialswitch.MaterialSwitch>()
+                for (e in schema) {
+                    val f = e.takeIf { it.isJsonObject }?.asJsonObject ?: continue
+                    val key = f.get("key")?.asString ?: continue
+                    val label = f.get("label")?.takeIf { !it.isJsonNull }?.asString ?: key
+                    val cur = cfg.get(key)?.takeIf { !it.isJsonNull }?.asString
+                        ?: f.get("default")?.takeIf { !it.isJsonNull }?.asString ?: ""
+                    val type = f.get("type")?.takeIf { !it.isJsonNull }?.asString ?: "string"
+                    if (type == "boolean") {
+                        DemoKit.put(col, DemoKit.txt(this@UserMainActivity, theme, label, 13f, true), 10)
+                        val sw = DemoKit.themeSwitch(this@UserMainActivity, theme, cur == "true")
+                        checks[key] = sw
+                        DemoKit.put(col, sw, 6)
+                    } else {
+                        val mf = MdField(this@UserMainActivity, theme, label, cur, type == "number", false)
+                        edits[key] = mf
+                        DemoKit.put(col, mf, 10)
                     }
                 }
-                up.alpha = if (idx == 0) 0.3f else 1f
-                up.isEnabled = idx > 0
-                row.addView(up, LinearLayout.LayoutParams(dp(32), dp(32)))
-                val down = DemoKit.iconButton(this, theme, R.drawable.ic_chevron_down, "下移") {
-                    if (idx < order.size - 1) {
-                        val it0 = order.removeAt(idx)
-                        order.add(idx + 1, it0)
-                        rebuild()
+                DemoKit.put(
+                    col,
+                    DemoKit.txt(this@UserMainActivity, theme, "只影响**用户端**的配色（管理端在它自己的主题页里调）。", 11.5f, false, "onSurfaceVariant"),
+                    12,
+                )
+                UiKit.customDialog(this@UserMainActivity, theme, t.name + " · 参数", col, "保存") {
+                    val conf = JsonObject()
+                    for ((k, mf) in edits) conf.addProperty(k, mf.text)
+                    for ((k, sw) in checks) conf.addProperty(k, sw.isChecked)
+                    val body = JsonObject().apply { addProperty("id", t.id); add("config", conf) }
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        try {
+                            Api.post(server.baseUrl + "/theme-config", body, Api.authHeaders(server))
+                            withContext(Dispatchers.Main) {
+                                UiKit.toast(this@UserMainActivity, "已保存，用户端配色已更新")
+                                rebuildShell(true)
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) { UiKit.toast(this@UserMainActivity, "保存失败: " + (e.message ?: "")) }
+                        }
                     }
                 }
-                down.alpha = if (idx == order.size - 1) 0.3f else 1f
-                down.isEnabled = idx < order.size - 1
-                row.addView(down, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginStart = dp(4) })
-                val sw = com.google.android.material.materialswitch.MaterialSwitch(this).apply {
-                    isChecked = id !in hidden
-                    setOnCheckedChangeListener { _, checked ->
-                        if (checked) hidden.remove(id) else if (id !in hidden) hidden.add(id)
-                    }
-                }
-                row.addView(sw, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) })
-                DemoKit.put(rows, row, 10)
             }
         }
-        rebuild()
-        DemoKit.put(host, card, 2)
-
-        val acts = LinearLayout(this)
-        acts.addView(DemoKit.button(this, theme, "全部显示", "outlined") { hidden.clear(); rebuild() }, LinearLayout.LayoutParams(0, dp(40), 1f))
-        acts.addView(
-            DemoKit.button(this, theme, "保存", "filled") {
-                store.saveWidgetLayout(server.id, order.toList(), hidden.toList())
-                tip(getString(R.string.layout_saved))
-                closeChild()
-                showPage(P_HOME, Nav.NONE)
-            },
-            LinearLayout.LayoutParams(0, dp(40), 1f).apply { marginStart = dp(10) },
-        )
-        DemoKit.put(host, acts, 14)
-    }
-
-                           
-    private fun openHomeLayoutEditor() {
-        openChild("首页组件布局") { buildWidgetLayoutPage(it) }
     }
 
     private fun buildReportPage(host: LinearLayout) {
@@ -1047,6 +1293,16 @@ class UserMainActivity : ShellActivity() {
         DemoKit.put(card, DemoKit.txt(this, theme, "Gay Core", 16f, true))
         DemoKit.put(card, DemoKit.txt(this, theme, "Material 3 原生界面 · 服务端驱动 UI", 12.5f, false, "onSurfaceVariant"), 4)
         DemoKit.put(card, DemoKit.valueRow(this, theme, "版本", com.gaycore.app.BuildConfig.VERSION_NAME), 12)
+        
+
+
+
+        DemoKit.put(
+            card,
+            DemoKit.valueRow(this, theme, "主题主色", "#" + Integer.toHexString(0xFFFFFF and theme.color(this, "primary"))),
+            8,
+        )
+        DemoKit.put(card, DemoKit.valueRow(this, theme, "光标着色", UiKit.lastCaretStatus), 8)
         DemoKit.put(card, DemoKit.valueRow(this, theme, "核心", bootstrap?.core ?: "—"), 10)
         DemoKit.put(card, DemoKit.valueRow(this, theme, "App API", (bootstrap?.appApi ?: 0).toString()), 10)
         DemoKit.put(card, DemoKit.valueRow(this, theme, "服务点", server.baseUrl), 10)
@@ -1072,13 +1328,10 @@ class UserMainActivity : ShellActivity() {
         DemoKit.put(host, card, 2)
     }
 
-                                                      
+    
 
-    private fun fmt(v: String): String = if (v.isBlank() || v == "0") "—" else fmtTok(v.toLongOrNull() ?: 0L)
+    private fun fmt(v: String): String = if (v.isBlank() || v == "0") "—" else fmtTok(v.toDoubleOrNull() ?: 0.0)
 
-    private fun fmtTok(v: Long): String = when {
-        v >= 100_000_000 -> String.format("%.1f亿", v / 100000000.0)
-        v >= 10_000 -> String.format("%.1f万", v / 10000.0)
-        else -> v.toString()
-    }
+    
+    private fun fmtTok(v: Double): String = com.gaycore.app.data.Currency.fmt(v)
 }

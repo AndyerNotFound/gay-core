@@ -13,8 +13,8 @@ android {
         applicationId = "com.gaycore.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 93
-        versionName = "0.13.16"
+        versionCode = 194
+        versionName = "0.18.60"
     }
 
     buildTypes {
@@ -45,7 +45,7 @@ android {
     }
 }
 
-                                  
+
 tasks.withType<KotlinCompile> {
     compilerOptions.jvmTarget.set(JvmTarget.JVM_17)
 }
@@ -61,4 +61,5 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:5.3.2")
     implementation("com.google.code.gson:gson:2.13.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("com.caverock:androidsvg:1.4")   
 }

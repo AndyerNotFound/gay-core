@@ -4,15 +4,18 @@ import com.gaycore.app.data.Bootstrap
 import com.gaycore.app.data.LayoutConfig
 import com.gaycore.app.data.TabItem
 
-                                                         
-                                                                         
+
+
 object LayoutMerger {
 
-    const val MAX_TABS = 5
+    
+
+
+    const val MAX_TABS = 12
     val DEFAULT_ORDER = listOf("home", "personal", "settings")
 
-                                                               
-    fun builtinTitles(id: String): Pair<String, String> = when (id) {                 
+    
+    fun builtinTitles(id: String): Pair<String, String> = when (id) { 
         "home" -> "首页" to "home"
         "models" -> "模型" to "apps"
         "plugins" -> "插件" to "star"
@@ -45,19 +48,22 @@ object LayoutMerger {
                     if (p != null && bb != null) {
                         out.add(TabItem.Plugin(raw, bb.title.ifEmpty { p.name }, bb.icon.ifEmpty { "apps" }, pid, bb.ui))
                     } else {
-                                                                
+                        
                         out.add(TabItem.Builtin(raw, "缺失", "close"))
                     }
                 }
             }
         }
-                                     
-        if (out.none { it.id == "home" }) out.add(0, TabItem.Builtin("home", "首页", "home"))
-        if (out.none { it.id == "settings" }) out.add(TabItem.Builtin("settings", "设置", "settings"))
-        return out.take(MAX_TABS)
+        
+
+
+        val capped = out.take(MAX_TABS).toMutableList()
+        if (capped.none { it.id == "home" }) capped.add(0, TabItem.Builtin("home", "首页", "home"))
+        if (capped.none { it.id == "settings" }) capped.add(TabItem.Builtin("settings", "设置", "settings"))
+        return capped
     }
 
-                                            
+    
     fun mergeHomeOrder(server: LayoutConfig?, local: LayoutConfig?, bootstrap: Bootstrap?): List<String> {
         val declared = bootstrap?.homePlugins()?.map { it.id } ?: emptyList()
         val order = local?.homeOrder ?: server?.homeOrder ?: emptyList()
@@ -67,7 +73,7 @@ object LayoutMerger {
         return out
     }
 
-                                        
+    
     fun validate(order: List<String>): String? =
-        if (order.size > MAX_TABS) "底栏最多 $MAX_TABS 个按键 (当前 ${order.size})" else null
+        if (order.size > MAX_TABS) "最多 $MAX_TABS 个入口 (当前 ${order.size})" else null
 }

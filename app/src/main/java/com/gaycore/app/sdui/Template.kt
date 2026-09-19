@@ -3,13 +3,13 @@ package com.gaycore.app.sdui
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 
-                                              
-                                                                                               
-                                           
+
+
+
 object Template {
     private val RE = Regex("""\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}""")
 
-                          
+    
     fun bind(text: String, scope: Map<String, Any?>): String {
         if (!text.contains("{{")) return text
         return RE.replace(text) { m ->
@@ -17,14 +17,14 @@ object Template {
         }
     }
 
-                                                            
+    
     fun bindRaw(v: Any?, scope: Map<String, Any?>): Any? {
         if (v !is String) return v
         val m = RE.matchEntire(v.trim()) ?: return bind(v, scope)
         return resolve(m.groupValues[1], scope)
     }
 
-                                                                  
+    
     fun truthy(v: Any?): Boolean = when (v) {
         null -> false
         is Boolean -> v
@@ -59,7 +59,7 @@ object Template {
         else -> e
     }
 
-                                                    
+    
     fun bindJson(el: JsonElement, scope: Map<String, Any?>): JsonElement {
         if (el.isJsonPrimitive) {
             val p = el.asJsonPrimitive
@@ -69,6 +69,10 @@ object Template {
                     is Boolean -> com.google.gson.JsonPrimitive(raw)
                     is Number -> com.google.gson.JsonPrimitive(raw)
                     is String -> com.google.gson.JsonPrimitive(raw)
+                    
+                    is List<*> -> com.google.gson.JsonArray().apply {
+                        for (x in raw) add(com.google.gson.JsonPrimitive(x?.toString() ?: ""))
+                    }
                     is JsonElement -> raw
                     else -> com.google.gson.JsonPrimitive("")
                 }
@@ -83,6 +87,53 @@ object Template {
         if (el.isJsonArray) {
             val a = com.google.gson.JsonArray()
             for (v in el.asJsonArray) a.add(bindJson(v, scope))
+            return a
+        }
+        return el
+    }
+
+    
+
+
+
+
+    fun bindKeep(text: String, scope: Map<String, Any?>): String {
+        if (!text.contains("{{")) return text
+        return RE.replace(text) { m -> resolve(m.groupValues[1], scope)?.toString() ?: m.value }
+    }
+
+    fun bindRawKeep(v: Any?, scope: Map<String, Any?>): Any? {
+        if (v !is String) return v
+        val m = RE.matchEntire(v.trim()) ?: return bindKeep(v, scope)
+        return resolve(m.groupValues[1], scope) ?: v
+    }
+
+    fun bindJsonKeep(el: JsonElement, scope: Map<String, Any?>): JsonElement {
+        if (el.isJsonPrimitive) {
+            val p = el.asJsonPrimitive
+            if (p.isString) {
+                val raw = bindRawKeep(p.asString, scope)
+                return when (raw) {
+                    is Boolean -> com.google.gson.JsonPrimitive(raw)
+                    is Number -> com.google.gson.JsonPrimitive(raw)
+                    is String -> com.google.gson.JsonPrimitive(raw)
+                    is List<*> -> com.google.gson.JsonArray().apply {
+                        for (x in raw) add(com.google.gson.JsonPrimitive(x?.toString() ?: ""))
+                    }
+                    is JsonElement -> raw
+                    else -> com.google.gson.JsonPrimitive("")
+                }
+            }
+            return el
+        }
+        if (el.isJsonObject) {
+            val o = JsonObject()
+            for ((k, v) in el.asJsonObject.entrySet()) o.add(k, bindJsonKeep(v, scope))
+            return o
+        }
+        if (el.isJsonArray) {
+            val a = com.google.gson.JsonArray()
+            for (v in el.asJsonArray) a.add(bindJsonKeep(v, scope))
             return a
         }
         return el

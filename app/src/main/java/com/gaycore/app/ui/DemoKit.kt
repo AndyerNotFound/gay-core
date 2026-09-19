@@ -24,22 +24,22 @@ import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import kotlin.math.roundToInt
 
-   
-                                                       
-  
-                                   
-                                                                                  
-                                                                         
-                                                                       
-                        
-                                        
-                            
-  
-                                                  
-   
+
+
+
+
+
+
+
+
+
+
+
+
+
 object DemoKit {
 
-                                                       
+    
 
     enum class Accent(val label: String, val primary: String, val container: String) {
         VIOLET("紫藤", "#7C5CFC", "#E7DEFF"),
@@ -49,7 +49,7 @@ object DemoKit {
         RED("莓果", "#B32645", "#FFD9E1"),
     }
 
-                                                        
+    
 
     fun dp(ctx: Context, v: Number): Int =
         (v.toFloat() * ctx.resources.displayMetrics.density + 0.5f).toInt()
@@ -66,10 +66,85 @@ object DemoKit {
             val c = v / 255f
             return if (c <= 0.03928f) c / 12.92f else Math.pow(((c + 0.055f) / 1.055f).toDouble(), 2.4).toFloat()
         }
+
         return 0.2126f * ch(Color.red(color)) + 0.7152f * ch(Color.green(color)) + 0.0722f * ch(Color.blue(color))
     }
 
-                                         
+    
+
+    fun themeSwitch(ctx: Context, theme: ThemeEngine, checked: Boolean): com.google.android.material.materialswitch.MaterialSwitch =
+        com.google.android.material.materialswitch.MaterialSwitch(ctx).apply {
+            isChecked = checked
+            trackTintList = ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(theme.color(ctx, "primary"), theme.color(ctx, "surfaceContainerHighest")),
+            )
+            thumbTintList = ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(theme.color(ctx, "onPrimary"), theme.color(ctx, "outline")),
+            )
+        }
+
+    
+
+    fun seedPalette(
+        act: android.app.Activity,
+        theme: ThemeEngine,
+        currentSeed: Int?,
+        onPick: (Int?) -> Unit,
+    ): View {
+        val seeds = listOf(
+            0xFF4C8BF5.toInt() to "蓝", 0xFF34A853.toInt() to "绿", 0xFFEA4335.toInt() to "红",
+            0xFFF9A825.toInt() to "橙", 0xFF9C6ADE.toInt() to "紫", 0xFF26C6DA.toInt() to "青",
+            0xFFEC407A.toInt() to "粉", 0xFF607D8B.toInt() to "灰蓝",
+        )
+        val cells = ArrayList<View>()
+        cells.add(seedCell(act, theme, null, "跟随主题", currentSeed == null) { onPick(null) })
+        for ((c, nm) in seeds) cells.add(seedCell(act, theme, c, nm, c == currentSeed) { onPick(c) })
+        return chipWrap(cells, 10)
+    }
+
+    
+    private fun seedCell(
+        act: android.app.Activity,
+        theme: ThemeEngine,
+        color: Int?,
+        name: String,
+        selected: Boolean,
+        onClick: () -> Unit,
+    ): View {
+        val size = dp(act, 52)
+        val col = LinearLayout(act).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onClick() }
+        }
+        val dot = View(act).apply {
+            background = if (color == null) {
+                Md3.shape(
+                    act, theme.color(act, "surfaceContainerHighest"), 15,
+                    if (selected) 3f else 1.5f,
+                    theme.color(act, if (selected) "primary" else "outline"),
+                )
+            } else {
+                Md3.shape(
+                    act, color, 15,
+                    if (selected) 3f else 0f,
+                    if (selected) theme.color(act, "onSurface") else android.graphics.Color.TRANSPARENT,
+                )
+            }
+        }
+        col.addView(dot, LinearLayout.LayoutParams(size, size))
+        col.addView(
+            txt(act, theme, name, 10.5f, selected, if (selected) "primary" else "onSurfaceVariant"),
+            LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(act, 4) },
+        )
+        return col
+    }
+
+    
     fun txt(
         ctx: Context, theme: ThemeEngine, t: String,
         sizeSp: Float = 15f, bold: Boolean = false, colorName: String = "onSurface",
@@ -88,7 +163,7 @@ object DemoKit {
         else -> theme.color(ctx, "primary")
     }
 
-                                                      
+    
 
     fun rounded(ctx: Context, color: Int, radiusDp: Int): GradientDrawable = GradientDrawable().apply {
         setColor(color)
@@ -106,31 +181,74 @@ object DemoKit {
         if (strokeWidthDp > 0) setStroke(dp(ctx, strokeWidthDp), stroke)
     }
 
-                                  
+    
     private fun rippleShape(ctx: Context, theme: ThemeEngine, shape: GradientDrawable, rippleHex: String? = null): RippleDrawable {
         val c = rippleHex?.let { Color.parseColor(it) } ?: theme.color(ctx, "onSurface")
         return RippleDrawable(ColorStateList.valueOf(withAlpha(c, 0.12f)), shape, null)
     }
 
-                                                      
+    
 
-                                                                              
-    fun panel(ctx: Context, theme: ThemeEngine, radiusDp: Int = 20, ripple: Boolean = false): LinearLayout =
-        LinearLayout(ctx).apply {
+    
+    fun panel(ctx: Context, theme: ThemeEngine, radiusDp: Int = 20, ripple: Boolean = false): LinearLayout {
+        val style = theme.cardStyle()
+        val r = theme.shapeDp("card", radiusDp)
+        val sw = theme.strokeWidthDp().toInt()
+        val fill: Int
+        val stroke: Int
+        val strokeWidth: Int
+        val shape: android.graphics.drawable.Drawable
+        when (style) {
+            "filled" -> {
+                fill = theme.color(ctx, "surfaceContainer"); stroke = Color.TRANSPARENT; strokeWidth = 0
+                shape = roundedOutline(ctx, fill, stroke, r, 0)
+            }
+            "elevated" -> {
+                fill = theme.color(ctx, "surface"); stroke = Color.TRANSPARENT; strokeWidth = 0
+                shape = roundedOutline(ctx, fill, stroke, r, 0)
+            }
+            "tonal" -> {
+                fill = blend(theme.color(ctx, "surface"), theme.color(ctx, "primary"), 0.10f)
+                stroke = Color.TRANSPARENT; strokeWidth = 0
+                shape = roundedOutline(ctx, fill, stroke, r, 0)
+            }
+            "gradient" -> {
+                fill = theme.color(ctx, "surface")
+                val c2 = theme.color(ctx, "surfaceContainer")
+                shape = android.graphics.drawable.GradientDrawable(
+                    android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(fill, c2)
+                ).apply { cornerRadius = dp(ctx, r).toFloat() }
+                stroke = Color.TRANSPARENT; strokeWidth = 0
+            }
+            else -> { 
+                fill = theme.color(ctx, "surfaceContainerLowest"); stroke = theme.color(ctx, "outlineVariant"); strokeWidth = sw
+                shape = roundedOutline(ctx, fill, stroke, r, strokeWidth)
+            }
+        }
+        return LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            val shape = roundedOutline(
-                ctx, theme.color(ctx, "surfaceContainerLowest"), theme.color(ctx, "outlineVariant"), radiusDp,
-            )
-            background = if (ripple) rippleShape(ctx, theme, shape) else shape
+            background = if (ripple) rippleShape(ctx, theme, shape as GradientDrawable, null) else shape
             setPadding(dp(ctx, 16), dp(ctx, 14), dp(ctx, 16), dp(ctx, 14))
             clipToPadding = false
+            if (style == "elevated") {
+                elevation = dp(ctx, 2).toFloat()
+            }
             if (ripple) {
                 isClickable = true
                 isFocusable = true
             }
         }
+    }
 
-                                           
+    
+    fun panelBg(ctx: Context, theme: ThemeEngine, radiusDp: Int = 12): android.graphics.drawable.Drawable =
+        rippleShape(ctx, theme, roundedOutline(ctx, theme.color(ctx, "surfaceContainerLowest"), theme.color(ctx, "outlineVariant"), radiusDp))
+
+    
+    fun selectedBg(ctx: Context, theme: ThemeEngine, radiusDp: Int = 12): android.graphics.drawable.Drawable =
+        roundedOutline(ctx, theme.color(ctx, "primaryContainer"), theme.color(ctx, "primary"), radiusDp)
+
+    
     fun gradientPanel(ctx: Context, theme: ThemeEngine, radiusDp: Int = 16): LinearLayout = LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
         background = GradientDrawable(
@@ -141,20 +259,42 @@ object DemoKit {
         clipToPadding = false
     }
 
-    fun divider(ctx: Context, theme: ThemeEngine): View = View(ctx).apply {
-        setBackgroundColor(theme.color(ctx, "outlineVariant"))
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(ctx, 1))
+    
+
+
+
+
+
+
+
+
+
+
+    class FixedHeightView(ctx: Context, private val hPx: Int) : View(ctx) {
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            setMeasuredDimension(
+                MeasureSpec.getSize(widthMeasureSpec),
+                if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY) {
+                    MeasureSpec.getSize(heightMeasureSpec)
+                } else hPx,
+            )
+        }
     }
 
-                                       
+    fun divider(ctx: Context, theme: ThemeEngine): View =
+        FixedHeightView(ctx, dp(ctx, 1)).apply {
+            setBackgroundColor(theme.color(ctx, "outlineVariant"))
+        }
+
+    
     fun pageColumn(ctx: Context, theme: ThemeEngine, bottomSpace: Int = 96): LinearLayout = LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(ctx, 16), dp(ctx, 14), dp(ctx, 16), dp(ctx, bottomSpace))
         setBackgroundColor(theme.color(ctx, "background"))
     }
 
-                                   
-                                                            
+    
+    
     fun box(ctx: Context): LinearLayout = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
 
     fun put(
@@ -164,9 +304,9 @@ object DemoKit {
         weight: Float = 0f,
     ) {
         val lp = if (weight > 0f) LinearLayout.LayoutParams(0, height, weight) else LinearLayout.LayoutParams(width, height)
-                                        
-                                                       
-                                                 
+        
+
+
         if (parent.orientation == LinearLayout.HORIZONTAL && parent.childCount > 0 &&
             lp.width == ViewGroup.LayoutParams.MATCH_PARENT
         ) {
@@ -176,7 +316,7 @@ object DemoKit {
         parent.addView(child, lp)
     }
 
-                  
+    
     fun splitRow(ctx: Context, left: View, right: View): LinearLayout {
         val row = LinearLayout(ctx).apply { gravity = Gravity.CENTER_VERTICAL }
         row.addView(left, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -184,7 +324,7 @@ object DemoKit {
         return row
     }
 
-                           
+    
     fun hscrollRow(ctx: Context, children: List<View>, gapDp: Int = 8): View {
         val inner = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         children.forEachIndexed { i, v ->
@@ -198,7 +338,7 @@ object DemoKit {
         }
     }
 
-                                                       
+    
 
     fun sectionTitle(ctx: Context, theme: ThemeEngine, title: String, subtitle: String = ""): View {
         val row = LinearLayout(ctx).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -209,7 +349,7 @@ object DemoKit {
         return row
     }
 
-                                                           
+    
 
     fun badge(ctx: Context, theme: ThemeEngine, text: String, tone: String = "neutral"): TextView {
         val bg: String
@@ -228,7 +368,7 @@ object DemoKit {
             setTypeface(Typeface.DEFAULT_BOLD)
             setPadding(dp(ctx, 9), dp(ctx, 4), dp(ctx, 9), dp(ctx, 4))
             setTextColor(theme.color(ctx, fg))
-            background = rounded(ctx, theme.color(ctx, bg), 100)
+            background = rounded(ctx, theme.color(ctx, bg), theme.shapeDp("chip", 100))
             maxLines = 1
         }
     }
@@ -237,8 +377,9 @@ object DemoKit {
         ctx: Context, theme: ThemeEngine, label: String, iconRes: Int? = null,
         selected: Boolean = false, onClick: (() -> Unit)? = null,
     ): TextView {
-        val shape = if (selected) roundedOutline(ctx, theme.color(ctx, "primaryContainer"), theme.color(ctx, "primary"), 100)
-        else roundedOutline(ctx, Color.TRANSPARENT, theme.color(ctx, "outline"), 100)
+        val chipR = theme.shapeDp("chip", 100)
+        val shape = if (selected) roundedOutline(ctx, theme.color(ctx, "primaryContainer"), theme.color(ctx, "primary"), chipR)
+        else roundedOutline(ctx, Color.TRANSPARENT, theme.color(ctx, "outline"), chipR)
         val tv = TextView(ctx).apply {
             text = label
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
@@ -281,13 +422,13 @@ object DemoKit {
         }
     }
 
-                                                        
+    
 
-       
-                                  
-                                                  
-                    
-       
+    
+
+
+
+
     fun segmented(
         ctx: Context, theme: ThemeEngine, labels: List<String>, selected: Int, onSelect: (Int) -> Unit,
     ): SegmentedButtons = SegmentedButtons(ctx, theme, labels, selected, onSelect)
@@ -308,14 +449,14 @@ object DemoKit {
         private val texts = ArrayList<TextView>()
         private var index = selected.coerceIn(0, maxOf(0, labels.size - 1))
 
-                                        
+        
         private var offset = index.toFloat()
         private var animator: android.animation.ValueAnimator? = null
 
         init {
-                                                                               
-                                                                        
-                                                               
+            
+
+
             background = rounded(ctx, theme.color(ctx, "surfaceContainerHighest"), 100)
             setPadding(pad, pad, pad, pad)
 
@@ -344,14 +485,14 @@ object DemoKit {
             val w = segWidth()
             if (w > 0f && height > pad * 2) {
                 val left = pad + offset * w
-                val r = (height - pad * 2) / 2f                     
+                val r = (height - pad * 2) / 2f      
                 pillRect.set(left, pad.toFloat(), left + w, (height - pad).toFloat())
                 canvas.drawRoundRect(pillRect, r, r, pillPaint)
             }
             super.dispatchDraw(canvas)
         }
 
-                                                 
+        
         fun select(i: Int) {
             index = i
             animateTo(i)
@@ -359,7 +500,7 @@ object DemoKit {
             onSelect(i)
         }
 
-                      
+        
         fun setSelected(i: Int, animate: Boolean = true) {
             index = i.coerceIn(0, maxOf(0, labels.size - 1))
             if (animate) animateTo(index) else {
@@ -394,7 +535,7 @@ object DemoKit {
         }
     }
 
-                                                             
+    
 
     fun button(ctx: Context, theme: ThemeEngine, text: String, style: String = "filled", onClick: (() -> Unit)? = null): MaterialButton =
         UiKit.button(ctx, theme, text, style).apply { if (onClick != null) setOnClickListener { onClick() } }
@@ -414,9 +555,9 @@ object DemoKit {
             setOnClickListener { onClick() }
         }
 
-                                                            
+    
 
-                                  
+    
     fun iconBadge(ctx: Context, theme: ThemeEngine, iconRes: Int, colorHex: String? = null, sizeDp: Int = 36): View {
         val dark = isDark(ctx, theme)
         val base = colorHex?.let { Color.parseColor(it) } ?: theme.color(ctx, "primary")
@@ -429,24 +570,27 @@ object DemoKit {
         return frame
     }
 
-       
-                                          
-                                         
-       
+    
+
+
+
     fun avatarAuto(ctx: Context, theme: ThemeEngine, url: String, text: String, sizeDp: Int): View {
         val size = dp(ctx, sizeDp)
         if (!(url.startsWith("http://") || url.startsWith("https://"))) {
-            return avatar(ctx, text, theme.color(ctx, "primary"), sizeDp)
+            return avatarSoft(ctx, theme, text, sizeDp)
         }
         val holder = FrameLayout(ctx)
         holder.layoutParams = LinearLayout.LayoutParams(size, size)
         val iv = ImageView(ctx).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
-            setBackgroundColor(theme.color(ctx, "primaryContainer"))
         }
         holder.addView(iv, FrameLayout.LayoutParams(size, size))
-        val fallback = avatar(ctx, text, theme.color(ctx, "primary"), sizeDp)
-        com.gaycore.app.data.ImageLoader.load(url, iv, circular = true) {
+        val fallback = avatarSoft(ctx, theme, text, sizeDp)
+        com.gaycore.app.data.ImageLoader.load(
+            url, iv,
+            com.gaycore.app.data.ImageLoader.Shape.ROUNDED,
+            theme.color(ctx, "surfaceContainerHigh"),
+        ) {
             holder.removeAllViews()
             holder.addView(fallback, FrameLayout.LayoutParams(size, size))
         }
@@ -456,21 +600,31 @@ object DemoKit {
     fun avatar(ctx: Context, text: String, color: Int, sizeDp: Int): TextView =
         avatar(ctx, text, String.format("#%06X", 0xFFFFFF and color), sizeDp)
 
-    fun avatar(ctx: Context, text: String, colorHex: String, sizeDp: Int): TextView {
+    fun avatar(ctx: Context, text: String, colorHex: String, sizeDp: Int): TextView =
+        avatar(ctx, text, colorHex, sizeDp, Color.WHITE)
+
+    
+    fun avatarSoft(ctx: Context, theme: ThemeEngine, text: String, sizeDp: Int): TextView {
+        val bg = theme.color(ctx, "primaryContainer")
+        return avatar(ctx, text, String.format("#%06X", 0xFFFFFF and bg), sizeDp, theme.color(ctx, "onPrimaryContainer"))
+    }
+
+    fun avatar(ctx: Context, text: String, colorHex: String, sizeDp: Int, textColor: Int): TextView {
         val size = dp(ctx, sizeDp)
         return TextView(ctx).apply {
             this.text = text
             gravity = Gravity.CENTER
             setTextSize(TypedValue.COMPLEX_UNIT_SP, if (sizeDp > 50) 22f else if (sizeDp > 32) 16f else 13f)
             setTypeface(Typeface.DEFAULT_BOLD)
-            setTextColor(Color.WHITE)
-            background = rounded(ctx, colorHex, 100)
+            setTextColor(textColor)
+            
+            background = rounded(ctx, colorHex, (sizeDp * 0.24f).toInt().coerceAtLeast(4))
             layoutParams = LinearLayout.LayoutParams(size, size)
             maxLines = 1
         }
     }
 
-                                                      
+    
 
     fun metricTile(
         ctx: Context, theme: ThemeEngine, value: String, label: String, glyph: String,
@@ -504,7 +658,7 @@ object DemoKit {
         return row
     }
 
-                 
+    
     fun actionTile(ctx: Context, theme: ThemeEngine, label: String, iconRes: Int, colorHex: String? = null, onClick: () -> Unit): View {
         val card = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -523,7 +677,7 @@ object DemoKit {
         return card
     }
 
-                                                       
+    
 
     class SearchBar(val view: View, val input: EditText)
 
@@ -564,9 +718,9 @@ object DemoKit {
         return SearchBar(row, input)
     }
 
-                                                       
+    
 
-                                
+    
     fun menuCard(
         ctx: Context, theme: ThemeEngine, title: String, desc: String, iconRes: Int,
         colorHex: String? = null, danger: Boolean = false, onClick: () -> Unit,
@@ -608,11 +762,11 @@ object DemoKit {
         return box
     }
 
-                           
+    
     fun dangerCard(ctx: Context, theme: ThemeEngine, title: String, desc: String, iconRes: Int, onClick: () -> Unit): View =
         menuCard(ctx, theme, title, desc, iconRes, danger = true, onClick = onClick)
 
-                                      
+    
     fun settingsGroup(ctx: Context, theme: ThemeEngine, rows: List<View>): View {
         val card = panel(ctx, theme, 20)
         card.setPadding(0, dp(ctx, 4), 0, dp(ctx, 4))
@@ -627,7 +781,7 @@ object DemoKit {
         return card
     }
 
-                                                
+    
     fun settingsRow(
         ctx: Context, theme: ThemeEngine, iconRes: Int, title: String, desc: String,
         colorHex: String? = null, danger: Boolean = false, onClick: () -> Unit,
@@ -658,7 +812,7 @@ object DemoKit {
         return row
     }
 
-                              
+    
     fun valueRow(ctx: Context, theme: ThemeEngine, label: String, value: String): View {
         val row = LinearLayout(ctx).apply { gravity = Gravity.CENTER_VERTICAL }
         row.addView(txt(ctx, theme, label, 12.5f, false, "onSurfaceVariant"), LinearLayout.LayoutParams(dp(ctx, 64), ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -666,7 +820,7 @@ object DemoKit {
         return row
     }
 
-                                                      
+    
 
     fun progressRow(ctx: Context, theme: ThemeEngine, label: String, value: Long, max: Long, detail: String): View {
         val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
@@ -686,7 +840,7 @@ object DemoKit {
         return col
     }
 
-                    
+    
     fun rankRow(
         ctx: Context, theme: ThemeEngine, name: String, count: String, ratio: String,
         colorHex: String, value: Float,
@@ -709,7 +863,7 @@ object DemoKit {
         return card
     }
 
-              
+    
     fun barChart(ctx: Context, theme: ThemeEngine, data: List<Int>, colorHex: String, labels: List<String> = emptyList()): View {
         val row = LinearLayout(ctx).apply { gravity = Gravity.BOTTOM }
         val maxV = (data.maxOrNull() ?: 1).coerceAtLeast(1)
@@ -730,7 +884,7 @@ object DemoKit {
         return row
     }
 
-                                                        
+    
 
     fun chatBubble(ctx: Context, theme: ThemeEngine, text: String, mine: Boolean, maxWidthPx: Int): View {
         val tv = txt(ctx, theme, text, 13.5f, false, if (mine) "onPrimaryContainer" else "onSurface").apply {
@@ -742,7 +896,7 @@ object DemoKit {
         return wrap
     }
 
-                                 
+    
     fun chipWrap(chips: List<View>, gapDp: Int = 8): View {
         if (chips.isEmpty()) return View(chips.firstOrNull()?.context ?: return View(null))
         val ctx = chips.first().context
@@ -751,7 +905,7 @@ object DemoKit {
         return flow
     }
 
-                                 
+    
     class FlowRow(ctx: Context, private val gapDp: Int) : ViewGroup(ctx) {
         private val gap = dp(ctx, gapDp)
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -797,9 +951,9 @@ object DemoKit {
         }
     }
 
-                                                       
+    
 
-                             
+    
     fun chatInput(ctx: Context, theme: ThemeEngine, hint: String, minLines: Int = 1): EditText =
         EditText(ctx).apply {
             this.hint = hint
@@ -813,7 +967,7 @@ object DemoKit {
             setPadding(dp(ctx, 14), dp(ctx, 10), dp(ctx, 14), dp(ctx, 10))
         }
 
-                                                 
+    
     fun iconRes(name: String?): Int = when (name?.removePrefix("msym:")) {
         "home" -> R.drawable.ic_home
         "person" -> R.drawable.ic_person
@@ -849,15 +1003,15 @@ object DemoKit {
         else -> R.drawable.ic_apps
     }
 
-                 
+    
     fun copy(ctx: Context, label: String, text: String) {
         val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         cm.setPrimaryClip(android.content.ClipData.newPlainText(label, text))
     }
 
-                                                        
+    
 
-                                           
+    
     fun animateIn(v: View, fromDp: Int = 10) {
         v.alpha = 0f
         v.translationY = dp(v.context, fromDp).toFloat()
@@ -867,7 +1021,7 @@ object DemoKit {
             .start()
     }
 
-                  
+    
     fun animateInStaggered(views: List<View>, stepMs: Long = 24) {
         views.forEachIndexed { i, v ->
             v.alpha = 0f
@@ -879,7 +1033,7 @@ object DemoKit {
         }
     }
 
-                                                        
+    
 
     fun lighten(color: Int, factor: Float): Int = adjust(color, factor)
 
@@ -890,7 +1044,14 @@ object DemoKit {
         return Color.rgb(channel(Color.red(color)), channel(Color.green(color)), channel(Color.blue(color)))
     }
 
-                                                       
+    
+    fun blend(a: Int, b: Int, ratio: Float): Int {
+        val r = ratio.coerceIn(0f, 1f)
+        fun ch(x: Int, y: Int) = (x + (y - x) * r).roundToInt().coerceIn(0, 255)
+        return Color.rgb(ch(Color.red(a), Color.red(b)), ch(Color.green(a), Color.green(b)), ch(Color.blue(a), Color.blue(b)))
+    }
+
+    
 
     fun switchRow(
         ctx: Context, theme: ThemeEngine, title: String, desc: String, checked: Boolean,
@@ -901,11 +1062,123 @@ object DemoKit {
         put(texts, txt(ctx, theme, title, 14f, true))
         if (desc.isNotEmpty()) put(texts, txt(ctx, theme, desc, 11.5f, false, "onSurfaceVariant"), 3)
         row.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        val sw = MaterialSwitch(ctx).apply {
-            isChecked = checked
+        val sw = themeSwitch(ctx, theme, checked).apply {
             setOnCheckedChangeListener { _, c -> onChecked(c) }
         }
         row.addView(sw, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         return row
+    }
+
+    
+
+    
+    fun miniChart(ctx: Context, theme: ThemeEngine, data: List<Pair<Int, Int>>): View {
+        val h = dp(ctx, 100)
+        return object : View(ctx) {
+            
+
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                setMeasuredDimension(
+                    MeasureSpec.getSize(widthMeasureSpec),
+                    if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY) {
+                        MeasureSpec.getSize(heightMeasureSpec)
+                    } else h,
+                )
+            }
+
+            override fun onDraw(canvas: android.graphics.Canvas) {
+                super.onDraw(canvas)
+                if (data.isEmpty()) return
+                val w = width.toFloat()
+                val h2 = height.toFloat()
+                val max = maxOf(1, data.maxOf { it.first })
+                val bw = w / data.size
+                val barH = h2 - 22f
+                val pPri = android.graphics.Paint().apply { color = theme.color(ctx, "primary"); isAntiAlias = true }
+                val pErr = android.graphics.Paint().apply { color = theme.color(ctx, "error"); isAntiAlias = true }
+                val pOut = android.graphics.Paint().apply { color = theme.color(ctx, "outlineVariant"); isAntiAlias = true }
+                val pTxt = android.graphics.Paint().apply { color = theme.color(ctx, "onSurfaceVariant"); textSize = dp(ctx, 9).toFloat(); isAntiAlias = true }
+                data.forEachIndexed { i, (count, errs) ->
+                    val bh = (count.toFloat() / max) * barH
+                    val x = i * bw
+                    if (bh > 1f) {
+                        canvas.drawRect(x + 1.5f, barH - bh + 8f, x + bw - 1.5f, barH + 8f, if (errs > 0) pErr else pPri)
+                    } else {
+                        canvas.drawRect(x + 1.5f, barH + 7f, x + bw - 1.5f, barH + 8f, pOut)
+                    }
+                }
+                canvas.drawText("-24h", 2f, h2 - 4f, pTxt)
+                canvas.drawText("now", w - 28f, h2 - 4f, pTxt)
+                val label = "\u5cf0\u503c " + max
+                canvas.drawText(label, w / 2f - dp(ctx, 18), 12f, pTxt)
+            }
+        }.apply { layoutParams = LinearLayout.LayoutParams(-1, h) }
+    }
+
+    
+    fun hbarChart(ctx: Context, theme: ThemeEngine, items: List<Pair<String, Int>>): View {
+        val col = box(ctx)
+        if (items.isEmpty()) { put(col, txt(ctx, theme, "\u6682\u65e0\u6570\u636e", 13f, false, "onSurfaceVariant")); return col }
+        val max = maxOf(1, items.maxOf { it.second })
+        for ((name, count) in items.take(8)) {
+            val row = LinearLayout(ctx).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(ctx, 4), 0, dp(ctx, 4)) }
+            row.addView(TextView(ctx).apply {
+                text = name; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+                setTextColor(theme.color(ctx, "onSurfaceVariant")); textSize = 12f
+            }, LinearLayout.LayoutParams(dp(ctx, 70), -2))
+            val track = FrameLayout(ctx).apply {
+                setBackgroundColor(theme.color(ctx, "surfaceContainer"))
+                addView(View(ctx).apply {
+                    setBackgroundColor(theme.color(ctx, "primary"))
+                    layoutParams = FrameLayout.LayoutParams(
+                        maxOf(2, (count.toFloat() / max * 1000).toInt()),
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                    )
+                })
+            }
+            row.addView(track, LinearLayout.LayoutParams(0, dp(ctx, 20), 1f).apply { marginStart = dp(ctx, 6) })
+            row.addView(TextView(ctx).apply {
+                text = count.toString(); setTextColor(theme.color(ctx, "onSurfaceVariant")); textSize = 11f
+                gravity = Gravity.END
+            }, LinearLayout.LayoutParams(dp(ctx, 40), -2))
+            put(col, row, 2)
+        }
+        return col
+    }
+
+    
+    fun activityFeed(ctx: Context, theme: ThemeEngine, items: List<com.google.gson.JsonObject>): View {
+        val col = box(ctx)
+        if (items.isEmpty()) { put(col, txt(ctx, theme, "\u6682\u65e0\u8bf7\u6c42\u8bb0\u5f55", 13f, false, "onSurfaceVariant")); return col }
+        for (r in items.take(20)) {
+            val row = LinearLayout(ctx).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(ctx, 5), 0, dp(ctx, 5)) }
+            val status = r.get("status")?.asInt ?: 200
+            val dot = View(ctx).apply {
+                setBackgroundColor(if (status < 400) 0xFF4CAF50.toInt() else theme.color(ctx, "error"))
+                layoutParams = LinearLayout.LayoutParams(dp(ctx, 7), dp(ctx, 7))
+            }
+            row.addView(dot)
+            row.addView(TextView(ctx).apply {
+                val tRaw = r.get("time")?.asString ?: ""
+                text = if (tRaw.length >= 19) tRaw.substring(11) else tRaw
+                setTextColor(theme.color(ctx, "onSurfaceVariant")); textSize = 11f
+            }, LinearLayout.LayoutParams(dp(ctx, 48), -2).apply { marginStart = dp(ctx, 6) })
+            row.addView(TextView(ctx).apply {
+                text = r.get("model")?.asString ?: ""
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+                setTextColor(theme.color(ctx, "onSurface")); textSize = 13f
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            row.addView(TextView(ctx).apply {
+                text = r.get("channel")?.asString ?: ""
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+                setTextColor(theme.color(ctx, "onSurfaceVariant")); textSize = 11f
+            }, LinearLayout.LayoutParams(dp(ctx, 60), -2))
+            row.addView(TextView(ctx).apply {
+                text = (r.get("duration")?.asLong ?: 0L).toString() + "ms"
+                setTextColor(theme.color(ctx, "onSurfaceVariant")); textSize = 11f
+            }, LinearLayout.LayoutParams(dp(ctx, 44), -2))
+            put(col, row, 0)
+        }
+        return col
     }
 }

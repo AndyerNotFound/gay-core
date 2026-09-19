@@ -5,8 +5,10 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.gaycore.app.App
 import com.gaycore.app.R
 import com.gaycore.app.data.Api
+import com.gaycore.app.data.KeyStoreCrypto
 import com.gaycore.app.data.ServerEntry
 import com.gaycore.app.theme.ThemeEngine
 import com.google.gson.JsonObject
@@ -14,15 +16,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-   
-                                  
-  
-                                                 
-                                         
-                                                                            
-  
-                                                           
-   
+
+
+
+
+
+
+
+
+
 object ProfilePage {
 
     fun build(
@@ -38,7 +40,7 @@ object ProfilePage {
         host.removeAllViews()
         DemoKit.put(host, DemoKit.txt(act, theme, "读取中…", 13f, false, "onSurfaceVariant"))
         act.lifecycleScope.launch(Dispatchers.IO) {
-                                                   
+            
             val me = try { Api.get(server.baseUrl + "/auth/me", headers) } catch (_: Exception) { null }
             val credits = try { Api.get(server.baseUrl + "/credits", headers) } catch (_: Exception) { null }
             withContext(Dispatchers.Main) {
@@ -47,7 +49,7 @@ object ProfilePage {
         }
     }
 
-                                                      
+    
 
     private fun render(
         act: AppCompatActivity,
@@ -68,7 +70,7 @@ object ProfilePage {
         val avatar = me?.str("avatar") ?: ""
         val role = if (asAdmin) "管理员" else "用户"
 
-                           
+        
         val head = DemoKit.panel(act, theme, 16)
         val hrow = LinearLayout(act).apply { gravity = Gravity.CENTER_VERTICAL }
         hrow.addView(
@@ -86,7 +88,7 @@ object ProfilePage {
         val unlimited = credits?.bool("unlimited") ?: false
         if (credits != null) {
             badges.addView(
-                DemoKit.badge(act, theme, if (unlimited) "不限额度" else "额度 " + fmt(credits.long("remainingTokens")), if (unlimited) "success" else "neutral"),
+                DemoKit.badge(act, theme, if (unlimited) "不限额度" else "额度 " + fmt(credits.dbl("remainingTokens")), if (unlimited) "success" else "neutral"),
                 LinearLayout.LayoutParams(-2, -2).apply { marginStart = DemoKit.dp(act, 6) },
             )
         }
@@ -101,7 +103,7 @@ object ProfilePage {
         DemoKit.put(head, hrow)
         DemoKit.put(host, head, 2)
 
-                           
+        
         val cred = DemoKit.panel(act, theme, 16)
         DemoKit.put(cred, DemoKit.txt(act, theme, "凭据", 16f, true))
         DemoKit.put(cred, DemoKit.valueRow(act, theme, "服务点", server.baseUrl), 12)
@@ -132,24 +134,24 @@ object ProfilePage {
         }
         DemoKit.put(host, cred, 14)
 
-                           
+        
         if (credits != null) {
             val quota = DemoKit.panel(act, theme, 16)
             DemoKit.put(quota, DemoKit.txt(act, theme, "额度", 16f, true))
             DemoKit.put(quota, DemoKit.valueRow(act, theme, "名称", credits.str("name").ifEmpty { "—" }), 12)
-            DemoKit.put(quota, DemoKit.valueRow(act, theme, "已用", fmt(credits.long("usedTokens"))), 10)
+            DemoKit.put(quota, DemoKit.valueRow(act, theme, "已用", fmt(credits.dbl("usedTokens"))), 10)
             DemoKit.put(
                 quota,
-                DemoKit.valueRow(act, theme, "剩余", if (unlimited) "不限" else fmt(credits.long("remainingTokens"))),
+                DemoKit.valueRow(act, theme, "剩余", if (unlimited) "不限" else fmt(credits.dbl("remainingTokens"))),
                 10,
             )
             DemoKit.put(quota, DemoKit.valueRow(act, theme, "到期", credits.str("expiresAt").ifEmpty { "长期有效" }), 10)
-            val q = credits.long("quotaTokens")
-            if (!unlimited && q > 0) {
-                val used = credits.long("usedTokens")
+            val q = credits.dbl("quotaTokens")
+            if (!unlimited && q > 0.0) {
+                val used = credits.dbl("usedTokens")
                 DemoKit.put(
                     quota,
-                    DemoKit.progressRow(act, theme, "已用 / 总额度", used, q, ((used * 100.0 / q).toInt()).toString() + "%"),
+                    DemoKit.progressRow(act, theme, "已用 / 总额度", used.toLong(), q.toLong(), ((used * 100.0 / q).toInt()).toString() + "%"),
                     14,
                 )
             }
@@ -168,7 +170,7 @@ object ProfilePage {
             DemoKit.put(host, card, 14)
         }
 
-                                      
+        
         val edit = DemoKit.panel(act, theme, 16)
         DemoKit.put(edit, DemoKit.txt(act, theme, "编辑资料", 16f, true))
         val editable = me != null
@@ -209,47 +211,112 @@ object ProfilePage {
         )
         DemoKit.put(host, edit, 14)
 
-                           
+        
+
+
+
+
+
         val pwd = DemoKit.panel(act, theme, 16)
-        DemoKit.put(pwd, DemoKit.txt(act, theme, "修改登录密码", 16f, true))
-        DemoKit.put(pwd, DemoKit.txt(act, theme, "需要先输入当前密码；新密码至少 8 位。", 12f, false, "onSurfaceVariant"), 6)
-        val fOld = MdField(act, theme, "当前密码", "", false, false).apply {
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-        }
-        val fNew = MdField(act, theme, "新密码（≥8 位）", "", false, false).apply {
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-        }
-        DemoKit.put(pwd, fOld, 14)
-        DemoKit.put(pwd, fNew, 12)
-        DemoKit.put(
-            pwd,
-            DemoKit.button(act, theme, "提交修改", "outlined") {
-                val np = fNew.text
-                if (np.length < 8) {
-                    UiKit.toast(act, "新密码至少 8 位")
-                    return@button
-                }
-                act.lifecycleScope.launch(Dispatchers.IO) {
-                    try {
-                        Api.post(
-                            server.baseUrl + "/auth/password",
-                            JsonObject().apply {
-                                addProperty("oldPassword", fOld.text)
-                                addProperty("newPassword", np)
-                            },
-                            headers,
-                        )
-                        withContext(Dispatchers.Main) { UiKit.toast(act, "密码已修改") }
-                    } catch (e: Exception) {
-                        withContext(Dispatchers.Main) { UiKit.toast(act, "修改失败: " + (e.message ?: "")) }
+        if (asAdmin) {
+            DemoKit.put(pwd, DemoKit.txt(act, theme, "修改管理密钥", 16f, true))
+            DemoKit.put(
+                pwd,
+                DemoKit.txt(act, theme, "管理密钥 = 管理端 / 网页端的访问密码。修改后本 App 会自动同步，请记牢新密钥。", 12f, false, "onSurfaceVariant"),
+                6,
+            )
+            val aOld = MdField(act, theme, "当前管理密钥", "", false, false).apply {
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            }
+            val aNew = MdField(act, theme, "新密钥（≥8 位）", "", false, false).apply {
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            }
+            val aNew2 = MdField(act, theme, "再输一次新密钥", "", false, false).apply {
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            }
+            DemoKit.put(pwd, aOld, 14)
+            DemoKit.put(pwd, aNew, 12)
+            DemoKit.put(pwd, aNew2, 12)
+            DemoKit.put(
+                pwd,
+                DemoKit.button(act, theme, "提交修改", "outlined") {
+                    val np = aNew.text
+                    if (np.length < 8) {
+                        UiKit.toast(act, "新密钥至少 8 位")
+                        return@button
                     }
-                }
-            },
-            14,
-        )
+                    if (np != aNew2.text) {
+                        UiKit.toast(act, "两次输入的新密钥不一致")
+                        return@button
+                    }
+                    UiKit.confirm(
+                        act,
+                        "修改管理密钥",
+                        "改完立即生效：网页端和其它设备都要改用新密钥。\n\n本 App 会自动同步，不需要重新登录。确定继续？",
+                        theme,
+                    ) {
+                        act.lifecycleScope.launch(Dispatchers.IO) {
+                            try {
+                                Api.adminPost(
+                                    server, "/admin/api/settings/admin-key",
+                                    JsonObject().apply {
+                                        addProperty("oldKey", aOld.text)
+                                        addProperty("newKey", np)
+                                    },
+                                )
+                                
+                                server.adminKeyEnc = KeyStoreCrypto.encrypt(np)
+                                App.of(act).store.save(server)
+                                withContext(Dispatchers.Main) { UiKit.toast(act, "管理密钥已修改") }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) { UiKit.toast(act, "修改失败: " + (e.message ?: "")) }
+                            }
+                        }
+                    }
+                },
+                14,
+            )
+        } else {
+            DemoKit.put(pwd, DemoKit.txt(act, theme, "修改登录密码", 16f, true))
+            DemoKit.put(pwd, DemoKit.txt(act, theme, "需要先输入当前密码；新密码至少 8 位。", 12f, false, "onSurfaceVariant"), 6)
+            val fOld = MdField(act, theme, "当前密码", "", false, false).apply {
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            }
+            val fNew = MdField(act, theme, "新密码（≥8 位）", "", false, false).apply {
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            }
+            DemoKit.put(pwd, fOld, 14)
+            DemoKit.put(pwd, fNew, 12)
+            DemoKit.put(
+                pwd,
+                DemoKit.button(act, theme, "提交修改", "outlined") {
+                    val np = fNew.text
+                    if (np.length < 8) {
+                        UiKit.toast(act, "新密码至少 8 位")
+                        return@button
+                    }
+                    act.lifecycleScope.launch(Dispatchers.IO) {
+                        try {
+                            Api.post(
+                                server.baseUrl + "/auth/password",
+                                JsonObject().apply {
+                                    addProperty("oldPassword", fOld.text)
+                                    addProperty("newPassword", np)
+                                },
+                                headers,
+                            )
+                            withContext(Dispatchers.Main) { UiKit.toast(act, "密码已修改") }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) { UiKit.toast(act, "修改失败: " + (e.message ?: "")) }
+                        }
+                    }
+                },
+                14,
+            )
+        }
         DemoKit.put(host, pwd, 14)
 
-                          
+        
         if (onLogout != null) {
             DemoKit.put(
                 host,
@@ -259,17 +326,15 @@ object ProfilePage {
         }
     }
 
-                                                      
+    
 
     private fun mask(k: String) = if (k.length <= 12) k else k.take(9) + "…" + k.takeLast(4)
 
-    private fun fmt(v: Long): String = when {
-        v >= 100_000_000 -> String.format("%.1f亿", v / 100000000.0)
-        v >= 10_000 -> String.format("%.1f万", v / 10000.0)
-        else -> v.toString()
-    }
+    
+    private fun fmt(v: Double): String = com.gaycore.app.data.AdminKey.fmtTokens(v)
 
     private fun JsonObject.str(k: String): String = get(k)?.takeIf { !it.isJsonNull }?.asString ?: ""
     private fun JsonObject.bool(k: String): Boolean = get(k)?.takeIf { !it.isJsonNull }?.asBoolean ?: false
     private fun JsonObject.long(k: String): Long = get(k)?.takeIf { !it.isJsonNull }?.asLong ?: 0L
+    private fun JsonObject.dbl(k: String): Double = get(k)?.takeIf { !it.isJsonNull }?.asDouble ?: 0.0
 }

@@ -1,21 +1,21 @@
 package com.gaycore.app.ui
 
-   
-              
-  
-                                                              
-                
-  
-      
-                               
-                                       
-                                         
-                                    
-      
-  
-                                      
-                                              
-   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 object Notices {
 
     data class Item(val time: String, val target: String, val body: String) {
@@ -58,7 +58,7 @@ object Notices {
 
     fun encode(list: List<Item>): String = list.joinToString("\n") { it.encode() }
 
-                                        
+    
     fun visibleTo(list: List<Item>, uid: String): List<Item> =
         list.filter { it.target.isEmpty() || (uid.isNotEmpty() && it.target == uid) }
 

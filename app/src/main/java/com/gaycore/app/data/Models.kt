@@ -2,7 +2,7 @@ package com.gaycore.app.data
 
 import com.google.gson.JsonObject
 
-                                                                
+
 
 data class ServerInfo(
     val name: String? = null,
@@ -11,6 +11,10 @@ data class ServerInfo(
     val announcement: String? = null,
     val contact: String? = null,
     val website: String? = null,
+    
+    val currencySymbol: String? = null,
+    
+    val currencyRate: Double? = null,
 )
 
 data class BranchInfo(val name: String, val uid: Long)
@@ -34,7 +38,7 @@ data class UserDebug(val forUid: String, val until: Long)
 
 data class LayoutConfig(
     val version: Int = 1,
-    val bottomBar: List<String>? = null,                                                  
+    val bottomBar: List<String>? = null,   
     val hidden: List<String>? = null,
     val homeOrder: List<String>? = null,
     val theme: String? = null,
@@ -67,7 +71,7 @@ data class PluginInfo(
     val hasAdminPage: Boolean = false,
 )
 
-                                         
+
 data class AppUi(
     val personal: UiRef? = null,
     val home: UiRef? = null,
@@ -77,7 +81,7 @@ data class AppUi(
     val widgets: List<WidgetInfo>? = null,
 )
 
-                                                    
+
 data class WidgetInfo(
     val id: String = "",
     val title: String = "",
@@ -87,11 +91,47 @@ data class WidgetInfo(
     val rows: Int = 1,
 )
 
+
+
+
+data class HomeSlot(
+    val id: String = "",
+    val c: Int = 5,
+    val r: Int = 1,
+    val auto: Boolean = true,
+    
+    val col: Int = -1,
+    val row: Int = -1,
+)
+
+
+
+data class DecoCard(
+    val id: String = "",
+    val kind: String = "emoji",
+    val text: String = "",
+)
+
 data class UiRef(
     val title: String = "",
     val icon: String = "",
     val ui: String = "",
     val id: String = "",
+)
+
+
+
+data class AdminUiPage(
+    val id: String = "",
+    val title: String = "",
+    val subtitle: String = "",
+    val icon: String = "",
+    val ui: String = "",
+)
+
+data class AdminUiConfig(
+    val version: Int = 0,
+    val pages: List<AdminUiPage>? = null,
 )
 
 data class Bootstrap(
@@ -107,26 +147,28 @@ data class Bootstrap(
     val auth: AuthCaps = AuthCaps(),
     val themes: List<ThemeInfo> = emptyList(),
     val plugins: List<PluginInfo> = emptyList(),
+    
+    val adminUi: AdminUiConfig? = null,
 ) {
-                                                  
+    
     fun userSystemPlugin(): PluginInfo? =
         plugins.firstOrNull { it.provides.contains("user-system") && it.appUi?.personal != null }
 
-                       
+    
     fun homePlugins(): List<PluginInfo> = plugins.filter { it.appUi?.home != null }
 
-                                                       
+    
     fun allWidgets(): List<Pair<String, WidgetInfo>> = plugins.flatMap { p ->
         (p.appUi?.widgets ?: emptyList()).map { p.id to it }
     }
 
-                    
+    
     fun bottomBarPlugins(): List<PluginInfo> = plugins.filter { it.appUi?.bottomBar != null }
 
     fun pluginById(id: String): PluginInfo? = plugins.firstOrNull { it.id == id }
 }
 
-              
+
 sealed class TabItem {
     abstract val id: String
     abstract val title: String
@@ -136,12 +178,12 @@ sealed class TabItem {
     data class Plugin(override val id: String, override val title: String, override val iconName: String, val pluginId: String, val ui: String) : TabItem()
 }
 
-                                          
+
 typealias GcPage = JsonObject
 
-                                      
 
-                                           
+
+
 data class AdminUser(
     val uid: String = "",
     val username: String = "",
@@ -158,12 +200,12 @@ data class AdminUser(
     val totalUsed: Long = 0,
 )
 
-                                              
+
 data class AdminKey(
     val key: String = "",
     val name: String = "",
     val enable: Boolean = true,
-    val quotaTokens: Long = 0,                    
+    val quotaTokens: Long = 0,      
     val usedTokens: Long = 0,
     val uid: String = "",
     val models: List<String> = emptyList(),
@@ -175,14 +217,11 @@ data class AdminKey(
     fun masked(): String = if (key.length > 12) key.take(8) + "…" + key.takeLast(4) else key
     fun quotaLabel(): String = when (quotaTokens) {
         -1L -> "不限"
-        0L -> "零额度"
-        else -> fmtTokens(quotaTokens)
+        else -> fmtTokens(quotaTokens.toDouble())
     }
     companion object {
-        fun fmtTokens(v: Long): String = when {
-            v >= 100_000_000 -> String.format("%.1f亿", v / 100000000.0)
-            v >= 10_000 -> String.format("%.1f万", v / 10000.0)
-            else -> v.toString()
-        }
+        
+
+        fun fmtTokens(v: Double): String = Currency.fmt(v)
     }
 }

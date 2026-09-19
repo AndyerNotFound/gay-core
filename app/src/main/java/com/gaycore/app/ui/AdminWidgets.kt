@@ -23,7 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-                            
+
 object UserDialogs {
 
     private fun io(act: AppCompatActivity, onDone: () -> Unit, block: () -> Unit) {
@@ -39,14 +39,17 @@ object UserDialogs {
             val p = dp(act, 20)
             setPadding(p, dp(act, 8), p, 0)
         }
-        return col to MaterialAlertDialogBuilder(act).setTitle(title).setView(col)
+        
+
+
+        return col to UiKit.ThemedDialogBuilder(act, theme).setTitle(title).setView(col)
     }
 
-                                           
+    
     private fun input(act: Context, theme: ThemeEngine, hint: String, text: String = "", number: Boolean = false): MdField =
         MdField(act, theme, hint, text, number)
 
-                                    
+    
     fun createUser(act: AppCompatActivity, theme: ThemeEngine, server: ServerEntry, onDone: () -> Unit) {
         val (col, dlg) = form(act, theme, act.getString(R.string.um_new_user))
         val uname = input(act, theme, act.getString(R.string.um_name_hint))
@@ -63,7 +66,7 @@ object UserDialogs {
         }.setNegativeButton(R.string.cancel, null).show()
     }
 
-                                    
+    
     fun editUser(act: AppCompatActivity, theme: ThemeEngine, server: ServerEntry, u: AdminUser, onDone: () -> Unit) {
         val (col, dlg) = form(act, theme, act.getString(R.string.um_edit_user))
         val name = input(act, theme, act.getString(R.string.um_name_hint), u.name)
@@ -82,7 +85,7 @@ object UserDialogs {
         }.setNegativeButton(R.string.cancel, null).show()
     }
 
-                                    
+    
     fun resetPassword(act: AppCompatActivity, theme: ThemeEngine, server: ServerEntry, u: AdminUser, onDone: () -> Unit) {
         val (col, dlg) = form(act, theme, act.getString(R.string.um_reset_password))
         val pass = input(act, theme, act.getString(R.string.um_new_password_hint))
@@ -96,7 +99,7 @@ object UserDialogs {
         }.setNegativeButton(R.string.cancel, null).show()
     }
 
-                                     
+    
     fun toggleBan(act: AppCompatActivity, theme: ThemeEngine, server: ServerEntry, u: AdminUser, onDone: () -> Unit) {
         if (u.banned) {
             UiKit.confirm(act, act.getString(R.string.um_unban), u.uid) {
@@ -116,14 +119,14 @@ object UserDialogs {
         }.setNegativeButton(R.string.cancel, null).show()
     }
 
-                                    
+    
     fun deleteUser(act: AppCompatActivity, server: ServerEntry, u: AdminUser, onDone: () -> Unit) {
         UiKit.confirm(act, act.getString(R.string.um_delete_user), act.getString(R.string.um_delete_user_confirm, u.uid)) {
             io(act, onDone) { Api.adminUserAction(server, JsonObject().apply { addProperty("action", "delete"); addProperty("uid", u.uid) }) }
         }
     }
 
-                                  
+    
     fun createKey(act: AppCompatActivity, theme: ThemeEngine, server: ServerEntry, uid: String?, onDone: () -> Unit) {
         val (col, dlg) = form(act, theme, act.getString(R.string.um_create_key))
         val name = input(act, theme, act.getString(R.string.um_key_name_hint))
@@ -146,7 +149,7 @@ object UserDialogs {
         }.setNegativeButton(R.string.cancel, null).show()
     }
 
-                                                  
+    
     fun editKey(act: AppCompatActivity, theme: ThemeEngine, server: ServerEntry, k: AdminKey, onDone: () -> Unit) {
         val (col, dlg) = form(act, theme, act.getString(R.string.um_edit_key))
         val name = input(act, theme, act.getString(R.string.um_key_name_hint), k.name)
@@ -180,7 +183,7 @@ object UserDialogs {
         }.setNegativeButton(R.string.cancel, null).show()
     }
 
-                                  
+    
     fun deleteKey(act: AppCompatActivity, server: ServerEntry, k: AdminKey, onDone: () -> Unit) {
         UiKit.confirm(act, act.getString(R.string.um_delete_key), k.masked() + " (" + k.name + ")") {
             io(act, onDone) { Api.adminDeleteKey(server, k.key) }

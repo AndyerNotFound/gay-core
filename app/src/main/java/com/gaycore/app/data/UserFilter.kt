@@ -1,6 +1,6 @@
 package com.gaycore.app.data
 
-                              
+
 object UserFilter {
 
     data class Result(val users: List<AdminUser>, val orphanKeys: List<AdminKey>)
@@ -8,7 +8,7 @@ object UserFilter {
     private fun hit(q: String, vararg fields: String?): Boolean =
         fields.any { it != null && it.lowercase().contains(q) }
 
-                                                
+    
     fun matchUser(u: AdminUser, keysOf: (String) -> List<AdminKey>, q: String): Boolean {
         if (q.isEmpty()) return true
         if (hit(q, u.uid, u.name, u.nickname, u.email, u.note)) return true
@@ -18,7 +18,7 @@ object UserFilter {
     fun matchKey(k: AdminKey, q: String): Boolean =
         q.isEmpty() || hit(q, k.key, k.name, k.note, k.uid)
 
-                                                           
+    
     fun filter(users: List<AdminUser>, allKeys: List<AdminKey>, orphanKeys: List<AdminKey>, q: String): Result {
         val qq = q.trim().lowercase()
         if (qq.isEmpty()) return Result(users, orphanKeys)

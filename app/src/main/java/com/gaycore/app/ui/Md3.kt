@@ -11,17 +11,17 @@ import android.util.TypedValue
 import android.widget.TextView
 import com.gaycore.app.theme.ThemeEngine
 
-   
-                                                   
-  
-                                                 
-                                               
-   
+
+
+
+
+
+
 object Md3 {
 
-                                                           
+    
 
-                                    
+    
     data class Type(val size: Float, val lineHeight: Float, val weight: Int, val tracking: Float = 0f)
 
     val displayLarge = Type(57f, 64f, Typeface.NORMAL, -0.25f)
@@ -44,17 +44,17 @@ object Md3 {
     val labelMedium = Type(12f, 16f, Typeface.BOLD, 0.5f)
     val labelSmall = Type(11f, 16f, Typeface.BOLD, 0.5f)
 
-                                                            
+    
 
     const val SHAPE_NONE = 0
-    const val SHAPE_XS = 4                     
+    const val SHAPE_XS = 4          
     const val SHAPE_S = 8
-    const val SHAPE_M = 12                  
+    const val SHAPE_M = 12          
     const val SHAPE_L = 16
-    const val SHAPE_XL = 28                        
-    const val SHAPE_FULL = 999                          
+    const val SHAPE_XL = 28         
+    const val SHAPE_FULL = 999      
 
-                                                                 
+    
 
     const val SP_1 = 4
     const val SP_2 = 8
@@ -64,31 +64,31 @@ object Md3 {
     const val SP_6 = 24
     const val SP_8 = 32
 
-                 
+    
     const val SCREEN_MARGIN = 16
 
-                 
+    
     const val TOUCH_TARGET = 48
 
-                                                  
+    
 
     const val BTN_HEIGHT = 40
-    const val BTN_PAD_H = 24                   
-    const val BTN_PAD_H_ICON = 16                         
+    const val BTN_PAD_H = 24          
+    const val BTN_PAD_H_ICON = 16     
     const val BTN_ICON = 18
     const val CHIP_HEIGHT = 32
-    const val ICON_BTN_SIZE = 48                         
+    const val ICON_BTN_SIZE = 48      
     const val ICON_BTN_ICON = 24
     const val FIELD_HEIGHT = 56
     const val CARD_PAD = 16
     const val CARD_RADIUS = SHAPE_M
 
-                                                
+    
 
     fun dp(ctx: Context, v: Number): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), ctx.resources.displayMetrics).toInt()
 
-                                
+    
     fun apply(tv: TextView, t: Type, color: Int) {
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, t.size)
         tv.setLineSpacing(dp(tv.context, t.lineHeight - t.size).toFloat(), 1f)
@@ -97,18 +97,18 @@ object Md3 {
         tv.setTextColor(color)
     }
 
-                         
+    
     fun ripple(color: Int): RippleDrawable =
         RippleDrawable(ColorStateList.valueOf(withAlpha(color, 0.12f)), null, null)
 
     fun withAlpha(color: Int, alpha: Float): Int =
         Color.argb((255 * alpha).toInt(), Color.red(color), Color.green(color), Color.blue(color))
 
-                                                       
+    
     fun disabledContainer(onSurface: Int) = withAlpha(onSurface, 0.12f)
     fun disabledLabel(onSurface: Int) = withAlpha(onSurface, 0.38f)
 
-                          
+    
     fun shape(ctx: Context, fill: Int, radiusDp: Int, strokeDp: Float = 0f, stroke: Int = Color.TRANSPARENT) =
         MaterialShapeDrawable(
             ShapeAppearanceModel.builder()
@@ -125,7 +125,7 @@ object Md3 {
             }
         }
 
-                                                                   
+    
     object Role {
         const val primary = "primary"
         const val onPrimary = "onPrimary"

@@ -8,58 +8,74 @@ import android.view.View
 import android.view.Window
 import com.gaycore.app.data.ThemeInfo
 
-                                             
-                                                                                                                                    
+
+
 class ThemeEngine(
     private val theme: ThemeInfo?,
     private val darkMode: String = "system",
     private val dynamicColors: Boolean = false,
+    private val customSeed: Int? = null,
 ) {
 
+    init {
+        
+        last = this
+    }
+
     companion object {
-                                                    
+        
+
+
+
+
+
+
+
+        @Volatile var last: ThemeEngine? = null
+
+        
         val DARK = mapOf(
-                     
+            
             "primary" to "#D0BCFF", "onPrimary" to "#381E72", "primaryContainer" to "#4F378B",
             "onPrimaryContainer" to "#EADDFF",
-                     
+            
             "secondary" to "#CCC2DC", "onSecondary" to "#332D41", "secondaryContainer" to "#4A4458",
             "onSecondaryContainer" to "#E8DEF8",
-                                   
+            
             "tertiary" to "#EFB8C8", "onTertiary" to "#492532", "tertiaryContainer" to "#633B48",
             "onTertiaryContainer" to "#FFD8E4",
-                      
+            
             "surface" to "#141218", "surfaceContainerLowest" to "#0F0D13",
             "surfaceContainer" to "#1D1B20", "surfaceContainerHigh" to "#2B2930",
             "surfaceContainerHighest" to "#36343B",
             "background" to "#141218", "onSurface" to "#E6E0E9", "onSurfaceVariant" to "#CAC4D0",
             "inverseSurface" to "#E6E0E9", "inverseOnSurface" to "#322F35",
-                    
+            
             "outline" to "#938F99", "outlineVariant" to "#49454F",
-                     
+            
             "error" to "#F2B8B5", "onError" to "#601410",
             "errorContainer" to "#8B1A1A", "onErrorContainer" to "#F9DEDC",
             "success" to "#4ADE80", "successContainer" to "#12301F", "onSuccessContainer" to "#86EFAC",
         )
         val LIGHT = mapOf(
-                     
+            
             "primary" to "#6750A4", "onPrimary" to "#FFFFFF", "primaryContainer" to "#EADDFF",
             "onPrimaryContainer" to "#21005D",
-                     
+            
             "secondary" to "#625B71", "onSecondary" to "#FFFFFF", "secondaryContainer" to "#E8DEF8",
             "onSecondaryContainer" to "#1D192B",
-                      
+            
             "tertiary" to "#7D5260", "onTertiary" to "#FFFFFF", "tertiaryContainer" to "#FFD8E4",
             "onTertiaryContainer" to "#31111D",
-                      
+            
             "surface" to "#FEF7FF", "surfaceContainerLowest" to "#FFFFFF",
             "surfaceContainer" to "#F3EDF7", "surfaceContainerHigh" to "#ECE6F0",
             "surfaceContainerHighest" to "#E6E0E9",
             "background" to "#FEF7FF", "onSurface" to "#1D1B20", "onSurfaceVariant" to "#49454F",
             "inverseSurface" to "#322F35", "inverseOnSurface" to "#F5EFF7",
-                    
+            
             "outline" to "#79747E", "outlineVariant" to "#CAC4D0",
-                     
+            
             "error" to "#B3261E", "onError" to "#FFFFFF",
             "errorContainer" to "#F9DEDC", "onErrorContainer" to "#410E0B",
             "success" to "#16A34A", "successContainer" to "#E8F8EE", "onSuccessContainer" to "#14532D",
@@ -75,7 +91,7 @@ class ThemeEngine(
         else -> isNight(ctx)
     }
 
-                                                            
+    
     private var cachedPalette: Map<String, String>? = null
     private var cachedDark: Boolean? = null
 
@@ -86,30 +102,36 @@ class ThemeEngine(
         val base = if (dark) DARK else LIGHT
         val over = (if (dark) theme?.dark else theme?.light) ?: emptyMap()
         var result = base + over
-        if (dynamicColors && android.os.Build.VERSION.SDK_INT >= 31) {
-            val dyn = dynamicPalette(ctx, dark)
+        if (customSeed != null) {
+            
+            val dyn = dynamicPalette(customSeed!!, dark)
             if (dyn.isNotEmpty()) result = result + dyn
+        } else if (dynamicColors && android.os.Build.VERSION.SDK_INT >= 31) {
+            val seed = wallpaperSeed(ctx)
+            if (seed != null) {
+                val dyn = dynamicPalette(seed, dark)
+                if (dyn.isNotEmpty()) result = result + dyn
+            }
         }
         cachedPalette = result
         cachedDark = dark
         return result
     }
 
-       
-                                                       
-      
-                                                                           
-                                               
-                                                    
-       
-    private fun dynamicPalette(ctx: Context, dark: Boolean): Map<String, String> {
-        val seed = wallpaperSeed(ctx) ?: return emptyMap()
+    
+
+
+
+
+
+
+    private fun dynamicPalette(seed: Int, dark: Boolean): Map<String, String> {
         val hsv = FloatArray(3)
         android.graphics.Color.RGBToHSV(
             android.graphics.Color.red(seed), android.graphics.Color.green(seed), android.graphics.Color.blue(seed), hsv,
         )
         val h = hsv[0]
-                                       
+        
         val s = if (hsv[1] < 0.12f) 0.35f else minOf(hsv[1], 0.75f)
 
         fun c(hue: Float, sat: Float, value: Float): String =
@@ -174,7 +196,7 @@ class ThemeEngine(
         return m
     }
 
-                                                    
+    
     private fun wallpaperSeed(ctx: Context): Int? {
         if (android.os.Build.VERSION.SDK_INT < 31) return null
         return try {
@@ -196,13 +218,29 @@ class ThemeEngine(
 
     private fun hexColor(c: Int): String = String.format("#%06X", 0xFFFFFF and c)
 
-                                                                                      
+    
     fun color(ctx: Context, name: String?): Int {
         if (name == null) return Color.TRANSPARENT
         val key = if (name.startsWith("$")) name.substring(1) else name
         val v = palette(ctx)[key] ?: name
         return try { Color.parseColor(v) } catch (_: Exception) { Color.parseColor(palette(ctx)["primary"]) }
     }
+
+    
+    private fun cssVar(name: String): String? = theme?.cssVars?.get(name)
+    private fun parsePx(v: String?, default: Int): Int {
+        if (v == null) return default
+        val n = v.replace("px", "").replace("dp", "").trim().toFloatOrNull()?.toInt() ?: return default
+        return n
+    }
+    
+    fun shapeDp(name: String, defaultDp: Int): Int = parsePx(cssVar("gc-radius-$name"), defaultDp)
+    
+    fun strokeWidthDp(): Float = parsePx(cssVar("gc-stroke-width"), 1).toFloat()
+    
+    fun cardStyle(): String = cssVar("gc-card-style") ?: "outlined"
+    
+    fun scheme(): String = cssVar("gc-scheme") ?: "standard"
 
     fun applyToWindow(activity: Activity) {
         val w: Window = activity.window

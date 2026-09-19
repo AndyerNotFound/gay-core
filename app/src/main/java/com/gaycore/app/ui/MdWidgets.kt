@@ -22,18 +22,18 @@ import com.google.android.material.chip.Chip
 import com.gaycore.app.R
 import com.gaycore.app.theme.ThemeEngine
 
-   
-                                         
-  
-                                                   
-                     
-  
-                                                  
-              
-   
+
+
+
+
+
+
+
+
+
 object MdWidgets {
 
-                       
+    
     internal fun tcPub(ctx: Context, theme: ThemeEngine, name: String): Int = tc(ctx, theme, name)
     internal fun dpPub(ctx: Context, v: Float): Int = dp(ctx, v)
 
@@ -43,10 +43,10 @@ object MdWidgets {
 
     private fun tc(ctx: Context, theme: ThemeEngine, name: String): Int = theme.color(ctx, name)
 
-                                              
+    
 
-                     
-                                                                                                       
+    
+    
     fun panel(
         ctx: Context,
         theme: ThemeEngine,
@@ -69,12 +69,12 @@ object MdWidgets {
             )
         }
 
-                                              
+    
 
     fun text(ctx: Context, theme: ThemeEngine, t: String, sizeSp: Float = 15f, bold: Boolean = false, colorName: String = "onSurface"): TextView =
         UiKit.text(ctx, t, sizeSp, bold, tc(ctx, theme, colorName))
 
-                                                
+    
 
     fun sectionTitle(ctx: Context, theme: ThemeEngine, title: String, subtitle: String = ""): View {
         val row = LinearLayout(ctx).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -87,7 +87,7 @@ object MdWidgets {
         return row
     }
 
-                                                
+    
 
     fun badge(ctx: Context, theme: ThemeEngine, label: String, tone: String = "neutral"): TextView {
         val (bg, fg) = when (tone) {
@@ -107,9 +107,9 @@ object MdWidgets {
         }
     }
 
-                                                
+    
 
-                                                        
+    
     fun chip(
         ctx: Context,
         theme: ThemeEngine,
@@ -141,11 +141,11 @@ object MdWidgets {
                 arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
                 intArrayOf(selFg, unFg),
             ))
-              
-                                                                     
-               
+            
+
+
             minimumHeight = Md3.dp(ctx, Md3.CHIP_HEIGHT)
-                                                       
+            
             shapeAppearanceModel = com.google.android.material.shape.ShapeAppearanceModel.builder()
                 .setAllCornerSizes(com.google.android.material.shape.ShapeAppearanceModel.PILL)
                 .build()
@@ -163,9 +163,9 @@ object MdWidgets {
         return ch
     }
 
-                                                
+    
 
-                                                     
+    
     fun iconButton(
         ctx: Context,
         theme: ThemeEngine,
@@ -174,7 +174,7 @@ object MdWidgets {
         colorName: String = "onSurfaceVariant",
         onClick: () -> Unit,
     ): MaterialButton = MaterialButton(ctx, null, android.R.attr.borderlessButtonStyle).apply {
-                                                           
+        
         text = ""
         setIconResource(iconRes)
         iconPadding = 0
@@ -190,7 +190,7 @@ object MdWidgets {
         setOnClickListener { onClick() }
     }
 
-                                                   
+    
     fun circleIconButton(
         ctx: Context,
         theme: ThemeEngine,
@@ -220,9 +220,9 @@ object MdWidgets {
             setOnClickListener { onClick() }
         }
 
-                                                
+    
 
-                                                   
+    
     fun segmented(
         ctx: Context,
         theme: ThemeEngine,
@@ -266,7 +266,7 @@ object MdWidgets {
             }
             group.addView(b, LinearLayout.LayoutParams(0, -2, 1f))
         }
-                                                                    
+        
         group.check(selected)
         group.addOnButtonCheckedListener { _, id, isChecked ->
             if (isChecked && id != selected) onSelect(id)
@@ -274,9 +274,9 @@ object MdWidgets {
         return group
     }
 
-                                               
+    
 
-                    
+    
     fun metricCard(ctx: Context, theme: ThemeEngine, value: String, label: String, iconRes: Int, iconColorHex: String): View {
         val card = panel(ctx, theme, 16)
         card.addView(iconBadge(ctx, theme, iconRes, iconColorHex, 28), LinearLayout.LayoutParams(dp(ctx, 28), dp(ctx, 28)))
@@ -285,7 +285,7 @@ object MdWidgets {
         return card
     }
 
-                                  
+    
     fun metricTile(ctx: Context, theme: ThemeEngine, value: String, label: String, glyph: String): View {
         val card = panel(ctx, theme, 16)
         card.gravity = Gravity.CENTER
@@ -295,7 +295,7 @@ object MdWidgets {
         return card
     }
 
-                                                  
+    
 
     fun iconBadge(ctx: Context, theme: ThemeEngine, iconRes: Int, colorHex: String, sizeDp: Int = 36, dark: Boolean = true): View {
         val base = Color.parseColor(colorHex)
@@ -324,9 +324,9 @@ object MdWidgets {
         (Color.blue(c) * 1.22f).toInt().coerceIn(0, 255),
     )
 
-                                              
+    
 
-                                            
+    
     fun input(
         ctx: Context,
         theme: ThemeEngine,
@@ -336,7 +336,7 @@ object MdWidgets {
         pill: Boolean = false,
     ): MdField = MdField(ctx, theme, label, value, numeric, pill)
 
-                                 
+    
     fun chipRow(ctx: Context, chips: List<View>): View {
         val hsv = android.widget.HorizontalScrollView(ctx).apply {
             isHorizontalScrollBarEnabled = false
@@ -350,9 +350,9 @@ object MdWidgets {
         return hsv
     }
 
-                                               
+    
 
-                                
+    
     fun switchRow(
         ctx: Context,
         theme: ThemeEngine,
@@ -371,13 +371,13 @@ object MdWidgets {
             )
         }
         r.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
-        val sw = com.google.android.material.materialswitch.MaterialSwitch(ctx).apply { isChecked = checked }
+        val sw = DemoKit.themeSwitch(ctx, theme, checked)
         sw.setOnCheckedChangeListener { _, v -> onChange(v) }
         r.addView(sw, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(ctx, 8f) })
         return r
     }
 
-                                         
+    
     fun listRow(
         ctx: Context,
         theme: ThemeEngine,
@@ -411,7 +411,7 @@ object MdWidgets {
         return card
     }
 
-                     
+    
     fun dangerRow(
         ctx: Context,
         theme: ThemeEngine,
@@ -453,13 +453,13 @@ object MdWidgets {
         return card
     }
 
-                                               
+    
 
-                                   
+    
 
-                                                                 
-                                                  
-                                            
+    
+
+
     fun settingsCard(
         ctx: Context,
         theme: ThemeEngine,
@@ -505,7 +505,7 @@ object MdWidgets {
         return row
     }
 
-                                                
+    
     fun settingsGroup(ctx: Context, theme: ThemeEngine, rows: List<View>): View {
         val col = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -525,7 +525,7 @@ object MdWidgets {
         return col
     }
 
-                                                           
+    
     fun pageTitle(ctx: Context, theme: ThemeEngine, t: String, sub: String = ""): View {
         val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         col.addView(text(ctx, theme, t, 20f, true, "onSurface"))
@@ -547,7 +547,7 @@ object MdWidgets {
         gravity = Gravity.CENTER_VERTICAL
     }
 
-               
+    
     fun gap(ctx: Context, dpValue: Int): View = View(ctx).apply {
         layoutParams = LinearLayout.LayoutParams(1, dp(ctx, dpValue))
     }
