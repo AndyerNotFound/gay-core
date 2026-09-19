@@ -7,8 +7,8 @@
 ```
 插件 (服务端)                          Gay Core (App)
 server.js 业务逻辑                      原生壳: 身份分流/服务器管理/动态底栏/设置
-ui 端点 → gcui JSON 树 ──────────────→ SDUI 渲染器 (JSON → Material View)
-intent 端点 ←── HMAC签名意图 ────────── 意图客户端 (验签/nonce/序列号/幂等)
+ui 端点 → gcui JSON 树 ─────────→ SDUI 渲染器 (JSON → Material View)
+intent 端点 ←── HMAC签名意图 ───── 意图客户端 (验签/nonce/序列号/幂等)
 ```
 
 - **客户端零业务状态**：整棵 UI 树都是服务端算的，App 只是渲染器 + 意图回传器
